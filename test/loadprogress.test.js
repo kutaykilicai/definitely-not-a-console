@@ -81,6 +81,9 @@ ok('shadPS4 inFAMOUS: found on its own, its log lines are read', () => {
   assert.ok(/shadPS4[\\/]log[\\/]shad_log\.txt$/.test(c.logs[1]));
   assert.equal(L.resolve({ ...g, args: '-g C:\\games\\CUSA12345\\eboot.bin', title: 'Other' , exe: 'C:\\emu\\shadPS4.exe' }), null);   // other shadPS4 games: only when chosen
   assert.ok(c.ready.test('[Render.Vulkan] <Info> vk_pipeline_serialization.cpp:240 WarmUp: Preloaded 2412 pipelines in 18093 ms'));
+  assert.ok(c.ready.test('[Render] <Info> (shadPS4:Main) vk_pipeline_serialization.cpp:1332 WarmUp: Preloaded 5192 pipelines'));   // the inFAMOUS build's own line
+  assert.ok(!c.ready.test('[Render] <Info> (shadPS4:Main) vk_pipeline_serialization.cpp:1225 WarmUp: CacheRebuild: vs-formats.bin entries 0'));
+  assert.equal(L.expectedMs(c, 5831, null), 5831 * 2.5);
   assert.ok(c.ready.test("[Render.Vulkan] <Warning> Pipeline cache isn't compatible with current system. Ignoring the cache"));
   const one = (re, line) => { re.lastIndex = 0; const m = re.exec(line); return m ? m.slice(1).join('/') : null; };
   assert.equal(one(c.percent, 'Compiling shaders: 45%'), '45');

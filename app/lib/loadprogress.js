@@ -43,7 +43,8 @@ const PRESETS = {
   },
   // shadPS4 builds for inFAMOUS Second Son / First Light (and other shadPS4 games when chosen in
   // games.json). shadPS4 rebuilds its pipeline cache at start (PipelineCache::WarmUp) and logs to
-  // user/log/shad_log.txt next to the exe (portable) or %APPDATA%/shadPS4/log. Mainline prints
+  // user/log/shad_log.txt next to the exe (portable, written anew each start) or
+  // %APPDATA%/shadPS4/log. Mainline and the inFAMOUS builds print
   // "Preloaded N pipelines" (or the stale/incompatible cache warnings) when it is over; a build
   // that prints a percentage or "done / total" for shaders or pipelines is followed as well. The
   // cache folder holds one .key file per pipeline.
@@ -54,7 +55,10 @@ const PRESETS = {
     counter: '(?:shader|pipeline)s?[^\\n]*?\\b(\\d+)\\s*/\\s*(\\d+)\\b',
     fail: 'Emulator closed|Exiting the emulator',
     count: { dir: ['user/cache', '%APPDATA%/shadPS4/cache'], ext: '.key' },
-    msPerItem: 20,
+    // Measured on the inFAMOUS build (branch second-son, v0.17.0-747): the warm-up builds the
+    // pipelines on 8 threads, 5192 of 5831 cached in 7.7 s, then logs "WarmUp: Preloaded 5192
+    // pipelines". No percentage in the log (the build draws its own in its window).
+    msPerItem: 2.5,
     // Its log keeps growing once the game runs, and builds differ in what they print: when no
     // ready line came, the game is shown 5 s after the estimate ran out, and after 90 s at most.
     graceMs: 5000,
