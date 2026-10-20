@@ -1,0 +1,745 @@
+/* PS5-style home screen. Original code. */
+(() => {
+  'use strict';
+  const $ = (s, r = document) => r.querySelector(s);
+  const stage = $('#stage');
+  const api = window.ps5;
+  const NAV = window.NAV, INPUT = window.INPUT, SOUND = window.SOUND, ICONS = window.ICONS, glyph = window.glyph;
+  const qs = new URLSearchParams(location.search);
+  const forced = qs.get('state') ? JSON.parse(qs.get('state')) : {};
+  const CAPTURE = qs.get('capture') === '1';
+
+  let S = null;            // strings
+  let data = null;         // init payload
+  let items = [];          // current row items
+  let nav = NAV.initial(0);
+  let overlays = [];
+  let inputMode = 'pad';
+  let running = null;
+  let launching = false;
+  const timers = {};
+  let lastMouse = 0; let moveTimes = [];
+  // Treat the mouse as in use only after real movement (several events), not a single synthetic move.
+  const mouseLive = () => moveTimes.length >= 3 && performance.now() - lastMouse < 400;
+
+  // ---------- helpers ----------
+  const t = (k, vars) => { let s = (S && S[k]) || k; if (vars) for (const [a, b] of Object.entries(vars)) s = s.replace(`{${a}}`, b); return s; };
+  const esc = (s) => String(s ?? '').replace(/[&<>"]/g, (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;' }[c]));
+  const later = (name, ms, fn) => { clearTimeout(timers[name]); timers[name] = setTimeout(fn, ms); };
+  const cssUrl = (u) => (u ? `url("${u.replace(/"/g, '%22')}")` : '');
+  const sw = () => parseFloat(stage.style.width) || 1920;
+
+  function fit() {
+    const z = window.innerHeight / 1080;
+    stage.style.zoom = z;
+    stage.style.width = `${Math.max(1920 * 0.75, window.innerWidth / z)}px`;
+  }
+  window.addEventListener('resize', () => { fit(); layoutRow(); });
+  fit();
+
+  function fmtDuration(sec) {
+    if (!sec) return '0 ' + t('minutes');
+    if (sec < 60) return t('lessThanMinute');
+    const h = Math.floor(sec / 3600), m = Math.floor((sec % 3600) / 60);
+    return h ? `${h} ${t('hours')} ${m} ${t('minutes')}` : `${m} ${t('minutes')}`;
+  }
+  function fmtLast(ts) {
+    if (!ts) return t('never');
+    const tz = (data && data.settings.timeZone) || 'Europe/Istanbul';
+    const day = (d) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(d);
+    const diff = Math.round((Date.parse(day(new Date())) - Date.parse(day(new Date(ts)))) / 86400000);
+    if (diff <= 0) return t('today');
+    if (diff === 1) return t('yesterday');
+    return t('daysAgo', { n: diff });
+  }
+  function clock() {
+    const tz = (data && data.settings.timeZone) || 'Europe/Istanbul';
+    const p = new Intl.DateTimeFormat('en-GB', { timeZone: tz, hour: 'numeric', minute: '2-digit', hourCycle: 'h23' }).formatToParts(new Date());
+    const h = String(parseInt(p.find((x) => x.type === 'hour').value, 10)); const m = p.find((x) => x.type === 'minute').value;
+    const el = $('.clock'); const txt = forced.clock || `${h}:${m}`;
+    if (el.textContent !== txt) el.textContent = txt;
+  }
+
+  // ---------- items ----------
+  function buildItems() {
+    const tab = nav.tab;
+    const games = data.games.filter((g) => (g.section || 'games') === (tab === 'games' ? 'games' : 'media'));
+    const manual = data.settings.rowOrder === 'manual';
+    games.sort((a, b) => (manual ? 0 : (b.lastPlayed || 0) - (a.lastPlayed || 0)) || (a.order ?? 0) - (b.order ?? 0));
+    const list = games.map((g) => ({ kind: 'game', id: g.id, g }));
+    if (tab === 'games') {
+      if (data.settings.rowStart !== 'none') list.unshift({ kind: 'desktop', id: '_desktop' });
+      list.push({ kind: 'add', id: '_add' });
+      list.push({ kind: 'library', id: '_library' });
+    }
+    return list;
+  }
+  const libraryEmpty = () => !data.games.some((g) => (g.section || 'games') === 'games');
+  const defaultRow = () => {
+    if (nav.tab !== 'games') return 0;
+    if (libraryEmpty()) return Math.max(0, items.findIndex((x) => x.kind === 'add'));
+    return data.settings.rowStart !== 'none' && items.length > 2 ? 1 : 0;
+  };
+  // Tiles for games without art: a colour from the name, the program's own icon and the title.
+  function hueOf(str) { let h = 0; for (const c of String(str)) h = (h * 31 + c.codePointAt(0)) % 360; return h; }
+  function genTile(g) {
+    const h = hueOf(g.title || g.id);
+    const ic = g.art && g.art.exeIcon ? `<img class="exeic" src="${g.art.exeIcon}" alt="">` : '';
+    return { style: `linear-gradient(150deg, hsl(${h} 55% 42%), hsl(${(h + 40) % 360} 60% 18%))`, html: `${ic}<div class="ph">${esc(g.title)}</div>` };
+  }
+  const cur = () => items[nav.row];
+
+  function renderRow() {
+    const row = $('#row'); row.innerHTML = '';
+    items.forEach((it, i) => {
+      const d = document.createElement('div');
+      d.className = 'tile'; d.dataset.i = i;
+      if (it.kind === 'game') {
+        if (it.g.art && it.g.art.icon) d.style.backgroundImage = cssUrl(it.g.art.icon);
+        else { const gt = genTile(it.g); d.style.backgroundImage = gt.style; d.classList.add('gen'); d.innerHTML = gt.html; }
+        if (!it.g.installed) d.classList.add('dim');
+      } else {
+        d.classList.add('sys');
+        d.innerHTML = it.kind === 'desktop' ? ICONS.desktop : it.kind === 'add' ? ICONS.plus : ICONS.library;
+      }
+      d.addEventListener('mousedown', (e) => { e.preventDefault(); mouseTile(i); });
+      row.appendChild(d);
+    });
+    $('#stage').classList.toggle('media', nav.tab === 'media');
+    $('#stage').classList.toggle('empty', items.length === 0);
+    $('#mediaempty').classList.toggle('on', items.length === 0);
+    $('#stage').classList.toggle('firstrun', nav.tab === 'games' && libraryEmpty());
+    layoutRow(true);
+  }
+  function layoutRow(instant) {
+    const tiles = [...$('#row').children];
+    const W = sw();
+    tiles.forEach((d, i) => {
+      const x = NAV.tileX(i, nav.row);
+      if (instant) d.style.transition = 'none';
+      d.style.left = `${x}px`;
+      d.classList.toggle('big', i === nav.row);
+      d.style.visibility = x > W + 20 || x < -200 ? 'hidden' : '';
+      const it = items[i];
+      let r = d.querySelector('.run');
+      if (it && it.kind === 'game' && running === it.id) { if (!r) { r = document.createElement('i'); r.className = 'run'; d.appendChild(r); } } else if (r) r.remove();
+      if (instant) { void d.offsetWidth; d.style.transition = ''; }
+    });
+    const ring = $('#ring');
+    if (instant) ring.style.transition = 'none';
+    ring.style.left = `${NAV.tileX(nav.row, nav.row) - 6}px`;
+    if (instant) { void ring.offsetWidth; ring.style.transition = ''; }
+  }
+
+  function updateRowTitle() {
+    const it = cur();
+    const rt = $('#rowtitle');
+    rt.style.left = `${NAV.tileX(nav.row, nav.row) + 168 + 17}px`;
+    if (!it) { rt.querySelector('.text').textContent = ''; rt.querySelector('.badge').textContent = ''; return; }
+    rt.querySelector('.badge').textContent = it.kind === 'game' ? (it.g.badge || '') : '';
+    rt.querySelector('.text').textContent = it.kind === 'game' ? it.g.title : it.kind === 'desktop' ? t('desktop') : it.kind === 'add' ? t('addGame') : t('library');
+  }
+
+  // ---------- hero / background ----------
+  let bgKey = null; let bgFront = 'A';
+  function bgFor(it) {
+    if (!it) return null;
+    if (it.kind === 'game') return (it.g.art && (it.g.art.background || it.g.art.icon)) || null;
+    return null;
+  }
+  function setBackground(url, instant) {
+    const key = url || '_none';
+    if (key === bgKey) return;
+    bgKey = key;
+    const front = $(`#bg${bgFront}`); const backName = bgFront === 'A' ? 'B' : 'A'; const back = $(`#bg${backName}`);
+    if (instant) {
+      front.className = 'bgimg'; back.className = 'bgimg';
+      if (url) { back.style.backgroundImage = cssUrl(url); back.style.transition = 'none'; back.classList.add('show'); void back.offsetWidth; back.style.transition = ''; bgFront = backName; }
+      return;
+    }
+    front.classList.remove('show'); front.classList.add('out');
+    const show = () => {
+      if (bgKey !== key) return;
+      if (!url) { bgFront = backName; return; }
+      back.className = 'bgimg'; back.style.backgroundImage = cssUrl(url);
+      void back.offsetWidth; back.classList.add('show'); bgFront = backName;
+    };
+    if (!url) { setTimeout(show, 120); return; }
+    const img = new Image(); img.src = url;
+    const ready = img.decode ? img.decode().catch(() => {}) : Promise.resolve();
+    Promise.all([ready, new Promise((r) => setTimeout(r, 150))]).then(show);
+  }
+
+  function renderHero() {
+    const it = cur();
+    const hero = $('#hero'); const logo = hero.querySelector('.logo'); const img = logo.querySelector('img');
+    const btn = $('.btn.primary'); const round = $('.btn.round'); const side = $('#side'); const hub = $('#hub');
+    if (!it) { hero.style.display = 'none'; $('#actions').style.display = 'none'; side.style.display = 'none'; hub.innerHTML = ''; return; }
+    hero.style.display = ''; $('#actions').style.display = '';
+    let title, desc, label, dimmed = false, logoUrl = null;
+    if (it.kind === 'game') {
+      const g = it.g;
+      title = g.title; desc = g.description || ''; logoUrl = g.art && g.art.logo;
+      label = running === g.id ? t('resume') : (data.settings.playLabel || t('play'));
+      dimmed = !g.installed;
+    } else if (it.kind === 'desktop') { title = t('desktop'); desc = data.settings.language === 'en' ? 'Minimise the menu and go to the Windows desktop.' : 'Menüyü küçültüp Windows masaüstüne geç.'; label = t('openDesktop'); }
+    else if (it.kind === 'add') { const first = libraryEmpty(); title = first ? t('firstRunTitle') : t('addGame'); desc = first ? t('firstRunDesc') : t('addDesc'); label = t('add'); }
+    else { title = t('library'); desc = data.settings.language === 'en' ? 'All your games in one place.' : 'Tüm oyunların tek bir yerde.'; label = t('open'); }
+    logo.querySelector('.logotext').textContent = title;
+    // Upper-casing follows the title's own language: "inFAMOUS" must not become "İNFAMOUS" under lang=tr.
+    logo.querySelector('.logotext').lang = /[çğıİöşüÇĞÖŞÜ]/.test(title) ? 'tr' : 'en';
+    if (logoUrl) { img.src = logoUrl; logo.classList.add('has'); img.onerror = () => logo.classList.remove('has'); } else { logo.classList.remove('has'); img.removeAttribute('src'); }
+    const lt = logo.querySelector('.logotext');
+    lt.style.fontSize = title.length > 26 ? '64px' : title.length > 16 ? '76px' : '84px';
+    lt.style.lineHeight = title.length > 26 ? '64px' : title.length > 16 ? '74px' : '80px';
+    hero.querySelector('.desc').textContent = desc;
+    btn.querySelector('.label').textContent = label;
+    btn.classList.toggle('dimmed', dimmed);
+    round.innerHTML = ICONS.dots; round.style.display = it.kind === 'game' ? '' : 'none';
+
+    if (it.kind === 'game') {
+      const g = it.g;
+      side.style.display = forced.side === false ? 'none' : '';
+      const art = (g.art && (g.art.cover || g.art.icon)) || null;
+      side.querySelector('.img').style.backgroundImage = art ? cssUrl(art) : genTile(g).style;
+      side.querySelector('.tag').textContent = /ps4|ps3|ps2/i.test(g.badge || '') ? t('ps4Game').replace('PS4', g.badge.toUpperCase()) : t('pcGame');
+      side.querySelector('.status').textContent = running === g.id ? t('running') : g.installed ? t('installed') : t('notFound');
+      side.querySelector('.ic').innerHTML = ICONS.clock;
+      const [l, r] = side.querySelectorAll('.col');
+      l.querySelector('.k').textContent = t('playTime'); l.querySelector('.v').textContent = fmtDuration(g.playSeconds);
+      r.querySelector('.k').textContent = t('lastPlayed'); r.querySelector('.v').textContent = fmtLast(g.lastPlayed);
+      const cards = [
+        { ic: ICONS.info, l: t('gameInfo'), v: [g.titleId || (g.titleIds && g.titleIds[0]) || '', srcLabel(g.source)].filter(Boolean).join(' · ') },
+        { ic: ICONS.folder, l: t('fileLocation'), v: g.exe || t('notFound') },
+        { ic: ICONS.edit, l: t('editGame'), v: g.losslessScaling ? 'Lossless Scaling' : '' },
+      ];
+      if (forced.hub) { cards.length = 0; forced.hub.forEach((l) => cards.push({ ic: ICONS.pad, l, v: '' })); }
+      hub.innerHTML = cards.map((c, i) => `<div class="hcard" data-c="${i}"><div class="hi">${c.ic}</div><div class="hl">${esc(c.l)}</div><div class="hv">${esc(c.v)}</div></div>`).join('');
+      hub.querySelectorAll('.hcard').forEach((c) => c.addEventListener('click', () => { nav.zone = 'cards'; nav.card = +c.dataset.c; applyZone(); dispatch('select'); }));
+    } else { side.style.display = 'none'; hub.innerHTML = ''; }
+    applyZone();
+  }
+  const srcLabel = (s) => ({ shortcut: t('srcShortcut'), seed: t('srcSeed'), missing: t('srcMissing') }[s] || (s ? t('srcManual') : ''));
+  const baseName = (p) => String(p || '').split(/[\\/]/).pop();
+
+  function onFocusChanged(instant) {
+    layoutRow(instant);
+    const ring = $('#ring'); const rt = $('#rowtitle');
+    ring.classList.remove('on'); rt.classList.remove('on');
+    const it = cur();
+    const url = bgFor(it);
+    const sameBg = (url || '_none') === bgKey;
+    if (instant) {
+      updateRowTitle(); renderHero(); setBackground(url, true);
+      if (nav.zone === 'row' && it) { ring.classList.add('on'); rt.classList.add('on'); }
+      return;
+    }
+    later('title', 195, () => { updateRowTitle(); if (nav.zone === 'row' && cur()) ring.classList.add('on'); if (cur()) rt.classList.add('on'); });
+    if (sameBg) { later('hero', 200, () => renderHero()); return; }
+    later('bg', 175, () => {
+      $('#page').classList.add('fadeout');
+      setBackground(url, false);
+      later('hero', 140, () => { renderHero(); $('#page').classList.remove('fadeout'); });
+    });
+  }
+
+  function applyZone() {
+    const z = nav.zone;
+    $('#ring').classList.toggle('on', z === 'row' && !!cur() && $('#rowtitle').classList.contains('on'));
+    document.querySelectorAll('.btn[data-a]').forEach((b) => b.classList.toggle('focus', z === 'actions' && +b.dataset.a === nav.action));
+    document.querySelectorAll('.hcard').forEach((c) => c.classList.toggle('focus', z === 'cards' && +c.dataset.c === nav.card));
+    document.querySelectorAll('#topbar [data-t]').forEach((e) => e.classList.toggle('focus', z === 'top' && +e.dataset.t === nav.top));
+    document.querySelectorAll('.tab').forEach((e) => e.classList.toggle('sel', (+e.dataset.t === 0) === (nav.tab === 'games')));
+    stage.classList.toggle('scrolled', z === 'cards');
+  }
+
+  // ---------- overlays ----------
+  function hints(list) {
+    const h = $('#hints');
+    if (!list) { h.classList.remove('on'); return; }
+    h.innerHTML = list.map(([k, l]) => `<span class="h">${glyph(k, inputMode)}<span>${esc(l)}</span></span>`).join('');
+    h.classList.add('on');
+  }
+  function pushOverlay(o) { overlays.push(o); $('#overlay').appendChild(o.el); o.render(); hints(o.hints || [['A', t('select')], ['B', t('back')]]); SOUND.play('menu'); }
+  function popOverlay(silent) {
+    const o = overlays.pop(); if (!o) return;
+    o.el.remove(); if (!silent) SOUND.play('back');
+    const top = overlays[overlays.length - 1];
+    if (top) hints(top.hints || [['A', t('select')], ['B', t('back')]]); else hints(null);
+  }
+  function closeAll() { while (overlays.length) popOverlay(true); hints(null); }
+
+  // A vertical list overlay. entries: [{label, icon, value, danger, run}]
+  function listOverlay({ entries, cls = 'pop', style = {}, title, full = false, keepOpen = false }) {
+    const wrap = document.createElement('div');
+    let box = wrap;
+    if (full) { wrap.className = 'full'; wrap.innerHTML = `<h1>${esc(title || '')}</h1><div class="panel"></div>`; box = wrap.querySelector('.panel'); }
+    else { wrap.className = cls; Object.assign(wrap.style, style); }
+    const o = { el: wrap, index: 0, entries };
+    o.render = () => {
+      const ents = typeof o.entries === 'function' ? o.entries() : o.entries;
+      box.innerHTML = ents.map((e, i) => `<div class="it${i === o.index ? ' focus' : ''}${e.danger ? ' danger' : ''}" data-i="${i}">${e.icon || ''}<span>${esc(e.label)}</span>${e.value != null ? `<span class="val">${esc(e.value)}</span>` : ''}</div>`).join('');
+      box.querySelectorAll('.it').forEach((el) => {
+        el.addEventListener('mousemove', () => { if (!mouseLive() || o.index === +el.dataset.i) return; o.index = +el.dataset.i; o.render(); });
+        el.addEventListener('click', () => { o.index = +el.dataset.i; o.input('select'); });
+      });
+    };
+    o.input = (a) => {
+      const ents = typeof o.entries === 'function' ? o.entries() : o.entries;
+      if (a === 'up' || a === 'down') { const n = NAV.listMove(o.index, a, ents.length); if (n !== o.index) { o.index = n; SOUND.play('focus'); o.render(); } else SOUND.play('bump'); }
+      else if (a === 'back' || a === 'options') popOverlay();
+      else if (a === 'select') { const e = ents[o.index]; if (!e) return; SOUND.play('select'); if (!keepOpen && !e.stay) popOverlay(true); if (e.run) e.run(); o.render && overlays.includes(o) && o.render(); }
+    };
+    return o;
+  }
+
+  function confirmDialog(q, onYes) {
+    const el = document.createElement('div');
+    el.innerHTML = `<div class="dimbg"></div><div class="dialog"><div class="q">${esc(q)}</div><div class="opts"><div class="btn" data-i="0">${esc(t('no'))}</div><div class="btn" data-i="1">${esc(t('yes'))}</div></div></div>`;
+    const o = { el, index: 0 };
+    o.render = () => el.querySelectorAll('.opts .btn').forEach((b) => { b.classList.toggle('focus', +b.dataset.i === o.index); b.onclick = () => { o.index = +b.dataset.i; o.input('select'); }; });
+    o.input = (a) => {
+      if (a === 'left' || a === 'right') { o.index = a === 'left' ? 0 : 1; SOUND.play('focus'); o.render(); }
+      else if (a === 'back') popOverlay();
+      else if (a === 'select') { popOverlay(true); if (o.index === 1) { SOUND.play('select'); onYes(); } else SOUND.play('back'); }
+    };
+    pushOverlay(o);
+  }
+
+  function gameMenu(g, from) {
+    const entries = [];
+    if (running === g.id) entries.push({ label: t('closeGame'), icon: ICONS.power, danger: true, run: () => api.kill() });
+    entries.push({ label: t('info'), icon: ICONS.info, run: () => infoOverlay(g) });
+    entries.push({ label: t('openLocation'), icon: ICONS.folder, run: () => api.open('game-folder', g.id).then((r) => r && toast(t('notFound'), r)) });
+    entries.push({ label: t('editGame'), icon: ICONS.edit, run: () => editOverlay(g) });
+    entries.push({ label: t('removeHome'), icon: ICONS.check, run: async () => { data = await api.hideGame(g.id); refresh(); } });
+    const style = from === 'row' ? { left: `${NAV.tileX(nav.row, nav.row)}px`, top: '310px' } : { left: '522px', bottom: '250px' };
+    pushOverlay(listOverlay({ entries, style }));
+  }
+
+  // ---------- game manager ----------
+  // A one-line text field. Keyboard: type, Enter saves, Esc cancels. Pad: A saves, B cancels.
+  function textDialog(label, value, onOk) {
+    const el = document.createElement('div');
+    el.innerHTML = `<div class="dimbg"></div><div class="dialog"><div class="q">${esc(label)}</div><input class="field" type="text" spellcheck="false"><div class="fh">${esc(t('typeHint'))}</div></div>`;
+    const inp = el.querySelector('input'); inp.value = value || '';
+    const o = { el, hints: [['A', t('fSave')], ['B', t('fCancel')]] };
+    const done = (ok) => { popOverlay(!ok); if (ok) { SOUND.play('select'); onOk(inp.value.trim()); } };
+    o.render = () => { setTimeout(() => { inp.focus(); inp.select(); }, 0); };
+    o.input = (a) => { if (a === 'select') done(true); else if (a === 'back') done(false); };
+    inp.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); done(true); } else if (e.key === 'Escape') { e.preventDefault(); done(false); } e.stopPropagation(); });
+    pushOverlay(o);
+  }
+
+  function artLabel(d) {
+    if (d.iconFile || d.backgroundFile) return t('artImage');
+    if (d.sceSys) return t('artSce');
+    if (!d.clearArt && d.artPaths && d.artPaths.icon) return /icon0\.png$/i.test(d.artPaths.icon) ? t('artSce') : t('artImage');
+    return t('artAuto');
+  }
+
+  function editOverlay(g) {
+    const ls = data.lossless && data.lossless.installed;
+    const d = g ? { id: g.id, title: g.title, exe: g.exe || '', args: g.args || '', workingDir: g.workingDir || '', sceSys: g.sceSys || '', losslessScaling: !!g.losslessScaling, hidden: !!g.hidden, badge: g.badge || '', artPaths: g.artPaths }
+      : { title: '', exe: '', args: '', workingDir: '', sceSys: '', losslessScaling: false, badge: '' };
+    const pickExe = async () => {
+      const r = await api.pick('exe', d.exe); if (!r) return;
+      if (r.error) { toast(t('fExe'), r.error); return; }
+      d.exe = r.exe; d.args = r.args || d.args; d.workingDir = r.workingDir || '';
+      if (!d.title) d.title = r.name || '';
+      if (!d.badge && r.badge) d.badge = r.badge;
+      o.render();
+    };
+    const artMenu = () => pushOverlay(listOverlay({ style: { left: '560px', top: '420px' }, entries: [
+      { label: t('artPick'), icon: ICONS.image, run: async () => { const r = await api.pick('image'); if (r && r.path) { d.iconFile = r.path; d.clearArt = true; o.render(); } } },
+      { label: t('artBg'), icon: ICONS.image, run: async () => { const r = await api.pick('image'); if (r && r.path) { d.backgroundFile = r.path; o.render(); } } },
+      { label: t('artPickSce'), icon: ICONS.folder, run: async () => {
+        const r = await api.pick('scesys'); if (!r) return;
+        if (r.error) { toast(t('fArt'), r.error); return; }
+        d.sceSys = r.sceSys; d.clearArt = true; delete d.iconFile; delete d.backgroundFile;
+        if (!d.title && r.title) d.title = r.title;
+        if (!d.badge) d.badge = 'PS4';
+        o.render();
+      } },
+      { label: t('artUseIcon'), icon: ICONS.pad, run: () => { d.sceSys = ''; d.clearArt = true; delete d.iconFile; delete d.backgroundFile; o.render(); } },
+    ] }));
+    const dirMenu = () => pushOverlay(listOverlay({ style: { left: '560px', top: '380px' }, entries: [
+      { label: t('dirPick'), icon: ICONS.folder, run: async () => { const r = await api.pick('folder', d.workingDir || d.exe); if (r && r.path) { d.workingDir = r.path; o.render(); } } },
+      { label: t('dirReset'), icon: ICONS.check, run: () => { d.workingDir = ''; o.render(); } },
+    ] }));
+    const save = async () => {
+      if (!d.exe) { SOUND.play('error'); toast(t('fSave'), t('pickFirst')); return; }
+      const { artPaths, ...draft } = d;
+      const r = await api.saveGame(draft);
+      if (r && r.init) data = r.init;
+      if (!r || !r.ok) { SOUND.play('error'); toast(t('fSave'), (r && r.error) || ''); return; }
+      popOverlay(true);
+      const top = overlays[overlays.length - 1];
+      if (top && top.kind === 'manage') top.render();
+      refresh(overlays.length ? undefined : r.id);
+      const lsMsg = r.ls && r.ls.created ? t('lsCreated') : r.ls && r.ls.reason === 'running' ? t('lsRunning') : '';
+      toast(t('saved'), lsMsg || d.title);
+    };
+    const entries = () => {
+      const list = [
+        { label: t('fExe'), icon: ICONS.folder, value: d.exe ? baseName(d.exe) : t('empty'), stay: true, run: pickExe },
+        { label: t('fName'), icon: ICONS.edit, value: d.title || t('empty'), stay: true, run: () => textDialog(t('fName'), d.title, (v) => { d.title = v; o.render(); }) },
+        { label: t('fArgs'), icon: ICONS.edit, value: d.args || '-', stay: true, run: () => textDialog(t('fArgs'), d.args, (v) => { d.args = v; o.render(); }) },
+        { label: t('fDir'), icon: ICONS.folder, value: d.workingDir ? baseName(d.workingDir) : t('exeFolder'), stay: true, run: dirMenu },
+        { label: t('fArt'), icon: ICONS.image, value: artLabel(d), stay: true, run: artMenu },
+        ls ? { label: t('fLs'), icon: ICONS.desktop, value: d.losslessScaling ? t('on') : t('off'), stay: true, run: () => { d.losslessScaling = !d.losslessScaling; o.render(); } }
+          : { label: t('lsMissing'), icon: ICONS.info, value: '', stay: true, run: () => toast(t('lsMissing'), t('lsMissingHint')) },
+      ];
+      if (d.hidden) list.push({ label: t('showHome'), icon: ICONS.check, value: t('off'), stay: true, run: () => { d.hidden = false; o.render(); } });
+      list.push({ label: t('fSave'), icon: ICONS.check, stay: true, run: save });
+      if (g) list.push({ label: t('fDelete'), icon: ICONS.power, danger: true, stay: true, run: () => confirmDialog(t('confirmDelete', { name: g.title }), async () => { data = await api.deleteGame(g.id); popOverlay(true); const top = overlays[overlays.length - 1]; if (top && top.kind === 'manage') { top.index = 0; top.render(); } refresh(); }) });
+      return list;
+    };
+    const o = listOverlay({ entries, full: true, title: g ? t('editGame') : t('addGame'), keepOpen: true });
+    o.kind = 'edit';
+    o.hints = [['A', t('select')], ['B', t('fCancel')]];
+    pushOverlay(o);
+    if (!g) setTimeout(() => { if (overlays.includes(o) && !d.exe) pickExe(); }, 250);
+  }
+
+  function manageOverlay() {
+    const games = () => data.allGames || data.games;
+    const entries = () => [
+      { label: t('addGame'), icon: ICONS.plus, stay: true, run: () => editOverlay(null) },
+      ...games().map((g) => ({ label: g.title, icon: ICONS.pad, value: g.hidden ? t('hiddenTag') : (g.badge || ''), stay: true, run: () => gameActions(g) })),
+    ];
+    const o = listOverlay({ entries, full: true, title: t('manageGames'), keepOpen: true });
+    o.kind = 'manage';
+    const move = async (g, delta) => {
+      data = await api.moveGame(g.id, delta);
+      const i = games().findIndex((x) => x.id === g.id); if (i >= 0) o.index = i + 1;
+      o.render(); refresh();
+    };
+    const gameActions = (g) => pushOverlay(listOverlay({ style: { left: '760px', top: `${Math.min(700, 250 + o.index * 84)}px` }, entries: [
+      { label: t('editGame'), icon: ICONS.edit, run: () => editOverlay(games().find((x) => x.id === g.id) || g) },
+      { label: t('moveUp'), icon: ICONS.up, run: () => move(g, -1) },
+      { label: t('moveDown'), icon: ICONS.down, run: () => move(g, 1) },
+      { label: t('fDelete'), icon: ICONS.power, danger: true, run: () => confirmDialog(t('confirmDelete', { name: g.title }), async () => { data = await api.deleteGame(g.id); o.index = Math.min(o.index, games().length); o.render(); refresh(); }) },
+    ] }));
+    pushOverlay(o);
+  }
+
+  function infoOverlay(g) {
+    const el = document.createElement('div'); el.className = 'full';
+    const rows = [
+      [t('library') === 'Game Library' ? 'Name' : 'Ad', g.title], [t('path'), g.exe || t('notFound')], [t('args'), g.args || '-'],
+      [t('fDir'), g.workingDir || '-'], [t('titleId'), (g.titleIds || []).join(', ') || '-'], [t('source'), srcLabel(g.source)],
+      [t('playTime'), fmtDuration(g.playSeconds)], [t('lastPlayed'), fmtLast(g.lastPlayed)],
+      [t('fArt'), (g.artPaths && g.artPaths.sceSys) || (g.artPaths && g.artPaths.icon) || '-'],
+    ];
+    el.innerHTML = `<h1>${esc(g.title)}</h1><div class="info">${rows.map(([k, v]) => `<div class="row"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join('')}</div>`;
+    const o = { el, render() {}, input(a) { if (a === 'back' || a === 'select' || a === 'options') popOverlay(); }, hints: [['B', t('back')]] };
+    pushOverlay(o);
+  }
+
+  function libraryOverlay() {
+    const el = document.createElement('div'); el.className = 'full';
+    const games = data.games.slice().sort((a, b) => a.title.localeCompare(b.title, 'tr'));
+    el.innerHTML = `<h1>${esc(t('library'))}</h1><div class="grid"></div>`;
+    const grid = el.querySelector('.grid');
+    const o = { el, index: 0, hints: [['A', t('play')], ['menu', t('options')], ['B', t('back')]] };
+    o.render = () => {
+      grid.innerHTML = games.map((g, i) => `<div class="gitem${i === o.index ? ' focus' : ''}" data-i="${i}"><div class="gi" style="background-image:${g.art && g.art.icon ? esc(cssUrl(g.art.icon)) : 'none'}"></div><div class="gt">${esc(g.title)}</div></div>`).join('');
+      grid.querySelectorAll('.gitem').forEach((e) => { const g = games[+e.dataset.i]; const gi = e.querySelector('.gi'); if (g.art && g.art.icon) gi.style.backgroundImage = cssUrl(g.art.icon); else { const gt = genTile(g); gi.style.backgroundImage = gt.style; gi.classList.add('gen'); gi.innerHTML = g.art && g.art.exeIcon ? `<img class="exeic" src="${g.art.exeIcon}" alt="">` : ''; } });
+      grid.querySelectorAll('.gitem').forEach((e) => e.addEventListener('click', () => { if (o.index === +e.dataset.i) o.input('select'); else { o.index = +e.dataset.i; o.render(); } }));
+    };
+    o.input = (a) => {
+      if (['up', 'down', 'left', 'right'].includes(a)) { const n = NAV.gridMove(o.index, a, games.length, 6); if (n !== o.index) { o.index = n; SOUND.play('focus'); o.render(); } else SOUND.play('bump'); }
+      else if (a === 'back') popOverlay();
+      else if (a === 'select' && games[o.index]) { popOverlay(true); launch(games[o.index]); }
+      else if (a === 'options' && games[o.index]) gameMenu(games[o.index], 'lib');
+    };
+    pushOverlay(o);
+  }
+
+  function settingsOverlay() {
+    const st = data.settings;
+    const intros = ['press', 'fade', 'none'];
+    const introLabel = (v) => ({ press: t('introPress'), fade: t('introFade'), none: t('introNone') }[v]);
+    const set = async (k, v) => { data.settings = await api.setSetting(k, v); applySettings(); };
+    const entries = () => [
+      { label: t('manageGames'), icon: ICONS.edit, stay: true, run: () => manageOverlay() },
+      { label: t('rowOrder'), icon: ICONS.library, value: st.rowOrder === 'manual' ? t('orderManual') : t('orderRecent'), stay: true, run: () => set('rowOrder', data.settings.rowOrder === 'manual' ? 'recent' : 'manual').then(() => refresh()) },
+      { label: 'Dil / Language', icon: ICONS.info, value: st.language === 'en' ? 'English' : 'Türkçe', stay: true, run: () => set('language', data.settings.language === 'en' ? 'tr' : 'en').then(() => { refresh(); const top = overlays[overlays.length - 1]; if (top) { top.el.querySelector('h1').textContent = t('settings'); hints([['A', t('select')], ['B', t('back')]]); } }) },
+      { label: t('userFolder'), icon: ICONS.folder, stay: true, run: () => api.open('user-assets') },
+      { label: t('sounds'), icon: ICONS.check, value: st.sounds ? t('on') : t('off'), stay: true, run: () => set('sounds', !data.settings.sounds) },
+      { label: t('introScreen'), icon: ICONS.info, value: introLabel(st.intro), stay: true, run: () => set('intro', intros[(intros.indexOf(data.settings.intro) + 1) % 3]) },
+      { label: t('autostart'), icon: ICONS.power, value: st.autostart ? t('on') : t('off'), stay: true, run: () => set('autostart', !data.settings.autostart) },
+      { label: t('fullscreen'), icon: ICONS.desktop, value: st.fullscreen !== false ? t('on') : t('off'), stay: true, run: () => set('fullscreen', data.settings.fullscreen === false) },
+      { label: t('exitMenu'), icon: ICONS.power, danger: true, run: () => api.window('quit') },
+    ];
+    const o = listOverlay({ entries: () => { const e = entries(); Object.assign(st, data.settings); return e; }, full: true, title: t('settings'), keepOpen: true });
+    o.input = ((orig) => (a) => { orig(a); })(o.input);
+    pushOverlay(o);
+  }
+
+  function powerMenu() {
+    const entries = [
+      { label: t('sleep'), icon: ICONS.power, run: () => confirmDialog(t('confirmSleep'), () => api.power('sleep')) },
+      { label: t('restart'), icon: ICONS.power, run: () => confirmDialog(t('confirmRestart'), () => api.power('restart')) },
+      { label: t('shutdown'), icon: ICONS.power, run: () => confirmDialog(t('confirmShutdown'), () => api.power('shutdown')) },
+      { label: t('exitMenu'), icon: ICONS.power, danger: true, run: () => api.window('quit') },
+    ];
+    pushOverlay(listOverlay({ entries, style: { right: '150px', top: '110px' } }));
+  }
+
+  // ---------- toast ----------
+  function toast(t1, t2, icon) {
+    const el = $('#toast');
+    el.querySelector('.t1').textContent = t1 || ''; el.querySelector('.t2').textContent = t2 || '';
+    const ic = el.querySelector('.ic');
+    if (icon) { ic.style.backgroundImage = cssUrl(icon); ic.innerHTML = ''; } else { ic.style.backgroundImage = ''; ic.innerHTML = ICONS.info; }
+    el.classList.add('on');
+    later('toast', Math.max(3500, (t2 || '').length * 60), () => el.classList.remove('on'));
+  }
+
+  // ---------- launch screen ----------
+  // art: game art, fading to black, spinner | busy: black + spinner | black: black only | off
+  function launchScreen(mode, g) {
+    const el = $('#launch'); const art = el.querySelector('.art');
+    el.classList.remove('dark', 'busy', 'instant');
+    if (mode === 'off') { el.classList.remove('on'); return; }
+    if (mode === 'art') {
+      const src = g && g.art && (g.art.background || g.art.cover || g.art.icon);
+      art.style.backgroundImage = src ? `url("${src}")` : 'none';
+      // Show the art at once, then let it fade to black (CSS: 900 ms hold, 1.1 s fade).
+      art.style.transition = 'none'; art.style.opacity = '1'; void art.offsetWidth;
+      art.style.transition = ''; art.style.opacity = '';
+      el.classList.add('on', 'busy');
+      requestAnimationFrame(() => requestAnimationFrame(() => { if (el.classList.contains('on')) el.classList.add('dark'); }));
+      return;
+    }
+    el.classList.add('on', 'dark', 'instant');
+    if (mode === 'busy') el.classList.add('busy');
+  }
+
+  // ---------- actions ----------
+  async function launch(g) {
+    if (launching) return;
+    if (running && running === g.id) { api.window('hide'); return; }
+    if (running) { SOUND.play('error'); toast(t('launchFailed'), data.settings.language === 'en' ? 'Another game is already running.' : 'Zaten açık bir oyun var.'); return; }
+    if (!g.exe) { SOUND.play('error'); toast(t('launchFailed'), t('missingExe'), g.art && g.art.icon); return; }
+    launching = true;
+    const b = $('.btn.primary'); b.classList.add('press'); setTimeout(() => b.classList.remove('press'), 140);
+    SOUND.play('launch');
+    const bo = $('#blackout'); bo.classList.add('fast'); bo.classList.remove('off');
+    launchScreen('art', g);
+    await new Promise((r) => setTimeout(r, 320));
+    const res = await api.launch(g.id);
+    launching = false;
+    if (!res || !res.ok) {
+      launchScreen('off');
+      bo.classList.add('off'); setTimeout(() => bo.classList.remove('fast'), 400);
+      SOUND.play('error'); toast(t('launchFailed'), (res && res.error) || '', g.art && g.art.icon);
+      return;
+    }
+    running = g.id;
+    g.lastPlayed = Date.now();
+    SOUND.startAmbient(false);
+  }
+
+  function activate(i) {
+    const it = items[i]; if (!it) return;
+    if (it.kind === 'game') launch(it.g);
+    else if (it.kind === 'desktop') { SOUND.play('select'); api.window('minimize'); }
+    else if (it.kind === 'library') { SOUND.play('select'); libraryOverlay(); }
+    else if (it.kind === 'add') { SOUND.play('select'); editOverlay(null); }
+  }
+
+  function dispatch(a) {
+    if (!data) return;
+    if ($('#intro').classList.contains('on')) { if (['select', 'home', 'back', 'options'].includes(a) || a === 'any') dismissIntro(); return; }
+    if (a === 'home') { closeAll(); }
+    if (overlays.length) { overlays[overlays.length - 1].input(a); return; }
+    const ctx = { rowLen: items.length, kind: (i) => (items[i] ? items[i].kind : 'game'), cardsLen: 3 };
+    const prevZone = nav.zone;
+    const { state, fx } = NAV.reduce(nav, a, ctx);
+    nav = state;
+    for (const f of fx) {
+      if (f.type === 'focus') { SOUND.play('focus'); onFocusChanged(false); }
+      else if (f.type === 'zone') { SOUND.play(f.back ? 'back' : 'focus'); applyZone(); if (prevZone !== nav.zone && nav.zone === 'row') { $('#ring').classList.add('on'); } }
+      else if (f.type === 'bump') SOUND.play('bump');
+      else if (f.type === 'tab') { SOUND.play('select'); items = buildItems(); nav.defaultRow = defaultRow(); nav.row = f.tab === 'games' ? nav.defaultRow : 0; renderRow(); onFocusChanged(true); applyZone(); }
+      else if (f.type === 'home') { SOUND.play('back'); onFocusChanged(true); applyZone(); }
+      else if (f.type === 'activate') activate(f.index);
+      else if (f.type === 'menu') { const it = items[f.index]; if (it && it.kind === 'game') gameMenu(it.g, prevZone === 'row' ? 'row' : 'btn'); }
+      else if (f.type === 'card') { const g = items[f.row].g; SOUND.play('select'); if (f.index === 0) infoOverlay(g); else if (f.index === 1) api.open('game-folder', g.id); else editOverlay(g); }
+      else if (f.type === 'open') { SOUND.play('select'); if (f.what === 'search') libraryOverlay(); else if (f.what === 'settings') settingsOverlay(); else if (f.what === 'profile') powerMenu(); }
+    }
+  }
+
+  // ---------- mouse ----------
+  function mouseTile(i) {
+    if (overlays.length) return;
+    if (nav.zone !== 'row') { nav.zone = 'row'; applyZone(); }
+    if (i === nav.row) { activate(i); return; }
+    nav.row = i; SOUND.play('focus'); onFocusChanged(false);
+  }
+  function wireMouse() {
+    $('.btn.primary').addEventListener('click', () => { nav.zone = 'actions'; nav.action = 0; applyZone(); activate(nav.row); });
+    $('.btn.round').addEventListener('click', () => { nav.zone = 'actions'; nav.action = 1; applyZone(); dispatch('options'); });
+    document.querySelectorAll('#topbar [data-t]').forEach((e) => e.addEventListener('click', () => { nav.zone = 'top'; nav.top = +e.dataset.t; applyZone(); dispatch('select'); }));
+    let wheelLock = 0;
+    window.addEventListener('wheel', (e) => { if (Date.now() < wheelLock) return; wheelLock = Date.now() + 90; const d = Math.abs(e.deltaX) > Math.abs(e.deltaY) ? e.deltaX : e.deltaY; dispatch(d > 0 ? (overlays.length ? 'down' : 'right') : (overlays.length ? 'up' : 'left')); }, { passive: true });
+    window.addEventListener('contextmenu', (e) => { e.preventDefault(); dispatch(overlays.length ? 'back' : 'options'); });
+    let hideT = 0;
+    window.addEventListener('mousemove', (e) => { if (e.movementX || e.movementY) { const n = performance.now(); lastMouse = n; moveTimes = moveTimes.filter((x) => n - x < 500); moveTimes.push(n); } document.body.classList.remove('nocursor'); clearTimeout(hideT); hideT = setTimeout(() => document.body.classList.add('nocursor'), 2500); });
+    $('#intro').addEventListener('click', () => dismissIntro());
+  }
+
+  // ---------- input ----------
+  function setMode(m) { if (m === inputMode) return; inputMode = m; renderIntroMsg(); const top = overlays[overlays.length - 1]; if (top) hints(top.hints || [['A', t('select')], ['B', t('back')]]); }
+  window.addEventListener('keydown', (e) => {
+    if (e.target && e.target.tagName === 'INPUT') return;   // text fields handle their own keys
+    const a = INPUT.keyAction(e);
+    if (a) { e.preventDefault(); setMode('keyboard'); document.body.classList.add('nocursor'); dispatch(a); }
+    else if ($('#intro').classList.contains('on')) dismissIntro();
+  });
+  const mappers = {};
+  function pollPads() {
+    const pads = navigator.getGamepads ? navigator.getGamepads() : [];
+    const now = performance.now();
+    for (const p of pads) {
+      if (!p || !p.connected) continue;
+      const m = mappers[p.index] || (mappers[p.index] = new INPUT.PadMapper());
+      const acts = m.update(p.buttons, p.axes, now);
+      if (acts.length) { setMode('pad'); document.body.classList.add('nocursor'); }
+      for (const a of acts) dispatch(a);
+    }
+    requestAnimationFrame(pollPads);
+  }
+
+  // ---------- intro ----------
+  function renderIntroMsg() {
+    const s = inputMode === 'keyboard' ? t('pressStartKb') : t('pressStart');
+    $('#intro .msg').innerHTML = esc(s).replace('{A}', glyph('A', inputMode));
+  }
+  let bokehRaf = 0;
+  function startIntro() {
+    const intro = $('#intro');
+    const custom = data.user.boot;
+    $('#intro .emblem').innerHTML = custom ? `<img src="${custom}" style="width:100px;height:100px;object-fit:contain">` : ICONS.boot;
+    renderIntroMsg();
+    intro.classList.add('on');
+    const cv = intro.querySelector('canvas'); const ctx = cv.getContext('2d');
+    const W = 1920, H = 1080; cv.width = W; cv.height = H;
+    let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    const parts = Array.from({ length: 260 }, () => {
+      const band = rnd();
+      return { x: rnd() * W, y: 520 + (rnd() - 0.5) * 420 + (band - 0.5) * 120 + (rnd() * W) * 0.05, r: rnd() < 0.85 ? 1 + rnd() * 4 : 6 + rnd() * 12, a: 0.25 + rnd() * 0.65, v: 4 + rnd() * 14, ph: rnd() * 6.28 };
+    });
+    const t0 = performance.now();
+    const draw = (now) => {
+      const tt = (now - t0) / 1000;
+      const g = ctx.createLinearGradient(0, 0, W, H); g.addColorStop(0, '#2a2522'); g.addColorStop(0.45, '#0e0f14'); g.addColorStop(1, '#06070b');
+      ctx.fillStyle = g; ctx.fillRect(0, 0, W, H);
+      const beam = ctx.createRadialGradient(330, -80, 20, 330, -80, 900); beam.addColorStop(0, 'rgba(255,236,214,0.30)'); beam.addColorStop(1, 'rgba(255,236,214,0)');
+      ctx.fillStyle = beam; ctx.fillRect(0, 0, W, H);
+      const floor = ctx.createLinearGradient(0, 820, 0, H); floor.addColorStop(0, 'rgba(120,140,160,0)'); floor.addColorStop(1, 'rgba(110,130,150,0.22)');
+      ctx.fillStyle = floor; ctx.fillRect(0, 820, W, 260);
+      for (const p of parts) {
+        const x = (p.x + tt * p.v) % (W + 40) - 20; const y = p.y + Math.sin(tt * 0.4 + p.ph) * 8;
+        const tw = 0.75 + 0.25 * Math.sin(tt * 1.3 + p.ph);
+        const gr = ctx.createRadialGradient(x, y, 0, x, y, p.r);
+        gr.addColorStop(0, `rgba(255,208,140,${p.a * tw})`); gr.addColorStop(p.r > 6 ? 0.7 : 0.4, `rgba(230,170,95,${p.a * tw * 0.55})`); gr.addColorStop(1, 'rgba(230,170,95,0)');
+        ctx.fillStyle = gr; ctx.beginPath(); ctx.arc(x, y, p.r, 0, 6.283); ctx.fill();
+      }
+      if (intro.classList.contains('on')) bokehRaf = requestAnimationFrame(draw);
+    };
+    bokehRaf = requestAnimationFrame(draw);
+  }
+  function dismissIntro() {
+    const intro = $('#intro');
+    if (!intro.classList.contains('on') || intro.classList.contains('out')) return;
+    SOUND.play('launch');
+    intro.classList.add('out');
+    setTimeout(() => { intro.classList.remove('on', 'out'); cancelAnimationFrame(bokehRaf); SOUND.startAmbient(true); }, 620);
+  }
+
+  // ---------- setup ----------
+  function applySettings() {
+    const st = data.settings;
+    S = Object.assign({}, window.STRINGS.tr, window.STRINGS[st.language] || {}, st.strings || {});
+    SOUND.enabled = st.sounds !== false; SOUND.setVolume(st.volume ?? 0.6);
+    document.documentElement.lang = st.language || 'tr';
+    $('.tab[data-t="0"]').textContent = t('games'); $('.tab[data-t="1"]').textContent = t('media');
+    $('.tb[data-t="2"]').innerHTML = ICONS.search; $('.tb[data-t="3"]').innerHTML = ICONS.gear;
+    const pic = $('.avatar .pic');
+    if (data.user.avatar) { pic.style.backgroundImage = cssUrl(data.user.avatar); pic.textContent = ''; } else pic.textContent = (st.username || 'K').slice(0, 1).toUpperCase();
+    $('#mediaempty .t').textContent = t('noMedia'); $('#mediaempty .h').textContent = t('noMediaHint');
+  }
+  function loadFonts(list) {
+    if (!list || !list.length) return;
+    const css = list.map((f) => `@font-face{font-family:'UserUI';src:url("${f.url}");font-weight:${f.variable ? '100 900' : f.weight};}`).join('\n');
+    const st = document.createElement('style'); st.textContent = css; document.head.appendChild(st);
+  }
+  function refresh(focusId) {
+    const keep = focusId || (cur() && cur().id);
+    data.games.forEach((g, i) => { g._order = i; });
+    items = buildItems();
+    nav.defaultRow = defaultRow();
+    const idx = items.findIndex((x) => x.id === keep);
+    nav.row = idx >= 0 ? idx : Math.min(nav.defaultRow, Math.max(0, items.length - 1));
+    renderRow(); onFocusChanged(true); applyZone();
+  }
+
+  api.on('game-started', (d) => { if (!d || !d.seamless) setTimeout(() => launchScreen('black'), 400); });
+  api.on('game-error', (d) => { running = null; launching = false; launchScreen('off'); $('#blackout').classList.add('off'); toast(t('launchFailed'), d.message); });
+  // The game window is in front: the launch screen becomes the black backdrop behind it.
+  api.on('game-handoff', () => { $('#blackout').classList.remove('off'); launchScreen('black'); });
+  api.on('game-returning', () => { closeAll(); $('#blackout').classList.remove('off'); launchScreen('busy'); });
+  api.on('game-resumed', () => { closeAll(); $('#blackout').classList.add('fast'); $('#blackout').classList.remove('off'); launchScreen('black'); });
+  // Home over a running game (Ctrl+Alt+Home, Alt+Tab to the menu).
+  api.on('show-home', (d) => {
+    launchScreen('off'); const bo = $('#blackout'); bo.classList.remove('fast'); bo.classList.add('off');
+    if (d && d.id) refresh(d.id);
+  });
+  api.on('game-exited', async (d) => {
+    running = null;
+    const fresh = await api.init(); data = fresh; applySettings();
+    nav.zone = 'row'; nav.tab = 'games'; closeAll();
+    refresh(d.id);
+    const bo = $('#blackout'); bo.classList.remove('fast'); bo.classList.add('off');
+    launchScreen('off');
+    if (d.failed) toast(t('launchFailed'), '');
+    else { const g = data.games.find((x) => x.id === d.id); if (g && d.seconds > 20) toast(t('gameClosed', { name: g.title }), `${t('playTime')}: ${fmtDuration(d.seconds)}`, g.art && g.art.icon); }
+    SOUND.startAmbient(true);
+  });
+
+  async function main() {
+    data = await api.init();
+    running = data.running;
+    applySettings(); loadFonts(data.user.fonts);
+    SOUND.loadUser(data.user.sounds);
+    if (forced.tab) nav.tab = forced.tab;
+    if (forced.scrim === false) stage.classList.add('noscrim');
+    refresh(data.state && data.state.focusId);
+    if (forced.row != null) { nav.row = forced.row; onFocusChanged(true); }
+    if (forced.zone) { nav.zone = forced.zone; nav.action = forced.action || 0; nav.card = forced.card || 0; nav.top = forced.top || 0; applyZone(); }
+    if (forced.overlay === 'menu') gameMenu(cur().g, forced.zone === 'row' ? 'row' : 'btn');
+    if (forced.overlay === 'settings') settingsOverlay();
+    if (forced.overlay === 'library') libraryOverlay();
+    if (forced.inputMode) setMode(forced.inputMode);
+    wireMouse(); clock(); setInterval(clock, 1000);
+    const intro = forced.intro || data.settings.intro;
+    if (intro === 'press') startIntro();
+    requestAnimationFrame(() => $('#blackout').classList.add('off'));
+    if (intro === 'none' || CAPTURE) { const bo = $('#blackout'); bo.style.transition = 'none'; bo.classList.add('off'); }
+    requestAnimationFrame(pollPads);
+    if (CAPTURE) {
+      await document.fonts.ready;
+      await new Promise((r) => setTimeout(r, forced.wait || 1200));
+      if (forced.intro !== 'press') { const i = $('#intro'); i.classList.remove('on'); }
+      await new Promise((r) => setTimeout(r, 100));
+      try { await api.capture(); } finally { api.captureDone(); }
+    }
+    window.__ps5 = { dispatch, get nav() { return nav; }, get items() { return items; }, get overlays() { return overlays.length; },
+      launchScreen: (mode, id) => launchScreen(mode, data.games.find((g) => g.id === id)) };
+  }
+  main().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<pre style="position:fixed;left:20px;top:20px;color:#f88;z-index:99;font:16px monospace;white-space:pre-wrap">${esc(e.stack || e)}</pre>`); });
+})();

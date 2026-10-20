@@ -1,0 +1,26 @@
+node_modules/
+dist/
+dl/
+.venv/
+__pycache__/
+*.log
+# local test data written by test/setup-root.js and the app during tests
+test/root/data/games.json
+test/root/data/state.json
+test/root/data/electron/
+test/root/assets/user/fonts/
+test/root/assets/user/sounds/
+# local notes and measurement material that is not part of the project
+RESUME.md
+reference/
+verify/
+fontlab/
+test/root-ref/
+test/lnk-real/
+pkg/
+native/*.exe
+tools/*.py
+!tools/make_demo_art.py
+tools/render.sh
+tools/render_all.sh
+test/e2e-motion.js

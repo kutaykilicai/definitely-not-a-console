@@ -1,0 +1,66 @@
+<!doctype html>
+<html lang="tr">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self' ps5file: data: blob:; img-src 'self' ps5file: data: blob:; media-src 'self' ps5file: data: blob:; font-src 'self' ps5file: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
+<title>Definitely Not PS5 Menu</title>
+<link rel="stylesheet" href="styles.css">
+</head>
+<body>
+<div id="stage">
+  <div id="bg"><div class="bgimg" id="bgA"></div><div class="bgimg" id="bgB"></div><div id="bgfallback"></div></div>
+  <div id="scrim"><div class="s-top"></div><div class="s-left"></div><div class="s-bottom"></div></div>
+
+  <div id="page">
+    <div id="row"></div>
+    <div id="ring"></div>
+    <div id="rowtitle"><span class="badge"></span><span class="text"></span></div>
+
+    <div id="hero">
+      <div class="logo"><img alt=""><div class="logotext"></div></div>
+      <div class="desc"></div>
+    </div>
+    <div id="actions">
+      <div class="btn primary" data-a="0"><span class="label"></span><span class="bar"></span></div>
+      <div class="btn round" data-a="1"></div>
+    </div>
+    <div id="side">
+      <div class="artcard"><div class="img"></div><div class="meta"><span class="tag"></span><span class="status"></span></div></div>
+      <div class="statcard">
+        <div class="ic"></div>
+        <div class="col l"><div class="k"></div><div class="v"></div></div>
+        <div class="col r"><div class="k"></div><div class="v"></div></div>
+      </div>
+    </div>
+    <div id="hub"></div>
+    <div id="mediaempty"><div class="t"></div><div class="h"></div></div>
+  </div>
+
+  <div id="topbar">
+    <div class="tabs"><div class="tab" data-t="0"></div><div class="tab" data-t="1"></div></div>
+    <div class="right">
+      <div class="icons">
+        <div class="tb" data-t="2"></div>
+        <div class="tb" data-t="3"></div>
+        <div class="tb avatar" data-t="4"><div class="pic"></div><i class="online"></i></div>
+      </div>
+      <div class="clock"></div>
+    </div>
+  </div>
+
+  <div id="overlay"></div>
+  <div id="toast"><div class="ic"></div><div class="tx"><div class="t1"></div><div class="t2"></div></div></div>
+  <div id="hints"></div>
+  <div id="intro"><canvas></canvas><div class="msg"></div><div class="emblem"></div></div>
+  <div id="blackout"></div>
+  <div id="launch"><div class="art"></div><div class="spin"><i></i></div></div>
+</div>
+<script src="strings.js"></script>
+<script src="icons.js"></script>
+<script src="nav.js"></script>
+<script src="input.js"></script>
+<script src="sound.js"></script>
+<script src="mock.js"></script>
+<script src="app.js"></script>
+</body>
+</html>

@@ -1,0 +1,88 @@
+{
+  "name": "definitely-not-ps5-menu",
+  "productName": "Definitely Not PS5 Menu",
+  "version": "1.2.0",
+  "description": "Windows için PS5 ana ekranına benzeyen bir oyun başlatıcı. Resmi değildir.",
+  "main": "main.js",
+  "author": "Kutay Kılıç <vodkakutay@gmail.com>",
+  "license": "MIT",
+  "private": true,
+  "homepage": "https://github.com/kutaykilicai/definitely-not-ps5-menu",
+  "scripts": {
+    "start": "electron .",
+    "dist": "node ../tools/build.js"
+  },
+  "devDependencies": {
+    "electron": "44.9.0",
+    "electron-builder": "^26.15.3"
+  },
+  "build": {
+    "appId": "io.github.kutaykilicai.definitelynotps5menu",
+    "productName": "Definitely Not PS5 Menu",
+    "copyright": "Copyright (c) 2026 Kutay Kılıç",
+    "directories": {
+      "output": "../dist"
+    },
+    "files": [
+      "main.js",
+      "preload.js",
+      "package.json",
+      "lib/**",
+      "bin/**",
+      "renderer/**",
+      "!renderer/sample/**",
+      "assets/fonts/**",
+      "assets/icons/**"
+    ],
+    "extraFiles": [
+      {
+        "from": "../LICENSE",
+        "to": "LICENSE.txt"
+      },
+      {
+        "from": "assets/fonts/OFL.txt",
+        "to": "LICENSE-NotoSans-OFL.txt"
+      }
+    ],
+    "asar": false,
+    "electronDist": "../dist/electron-win",
+    "afterPack": "build/afterpack.js",
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "icon": "assets/icons/app.ico",
+      "signAndEditExecutable": false,
+      "artifactName": "Definitely-Not-PS5-Menu-${version}-portable.${ext}"
+    },
+    "nsis": {
+      "oneClick": true,
+      "perMachine": false,
+      "allowElevation": false,
+      "createDesktopShortcut": "always",
+      "createStartMenuShortcut": true,
+      "shortcutName": "Definitely Not PS5 Menu",
+      "uninstallDisplayName": "Definitely Not PS5 Menu",
+      "deleteAppDataOnUninstall": false,
+      "artifactName": "Definitely Not PS5 Menu Setup ${version}.${ext}",
+      "installerIcon": "assets/icons/app.ico",
+      "uninstallerIcon": "assets/icons/app.ico",
+      "runAfterFinish": true
+    }
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/kutaykilicai/definitely-not-ps5-menu.git"
+  }
+}
