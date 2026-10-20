@@ -9,6 +9,7 @@ const library = require('./lib/library');
 const { GameRunner } = require('./lib/proc');
 const { WinHelper, helperPath, hwndOf, pickMain, waitForGameWindow, coversMonitor } = require('./lib/winwatch');
 const lossless = require('./lib/lossless');
+const homeflow = require('./lib/homeflow');
 
 const isWin = process.platform === 'win32';
 const argv = process.argv.slice(1);
@@ -53,6 +54,10 @@ const DEFAULT_SETTINGS = {
   rowStart: 'desktop',       // desktop | none
   rowOrder: 'recent',        // recent (like the console) | manual (the order set in Oyunları Yönet)
   dumpRoots: [],             // extra folders to search for PS4 dumps (sce_sys) by title ID
+  homeEsc: true,             // hold Esc during a game: pause it and go to the menu
+  homeEscMs: 1000,
+  homePad: true,             // same with the controller's Xbox button (or View+Menu together)
+  homePadMs: 1000,
 };
 
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch { return d; } };
@@ -130,6 +135,8 @@ async function buildInit() {
     games: all.filter((g) => !g.hidden), allGames: all, settings: { ...settings, username: settings.username || OS_USER }, state, user: listUserAssets(), platform: process.platform,
     paths: { root: ROOT, data: DATA, games: FILES.games, userAssets: USER_ASSETS },
     running: runner.running ? runner.current.game.id : null,
+    paused: !!(session && (phase === 'paused' || phase === 'pausing' || phase === 'overlay')),
+    suspended: !!(session && session.suspended),
     version: app.getVersion(),
     lossless: { installed: !!((isWin || FAKE) && lsOps.findExe(settings.losslessScalingExe)) || !!process.env.PS5MENU_FAKE_LS },
     migration,
@@ -162,6 +169,7 @@ function createWindow(reopen = null) {
   if (flag('screenshot')) q.capture = '1';
   if (reopen) q.reopen = reopen;
   const me = win;
+  me.ready = new Promise((res) => me.once('ready-to-show', () => setTimeout(res, reopen ? 340 : 0)));
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: q });
   win.webContents.on('did-finish-load', () => { const p = pending.splice(0); for (const [ch, d] of p) if (!me.isDestroyed()) me.webContents.send(ch, d); });
   win.once('ready-to-show', () => {
@@ -169,6 +177,8 @@ function createWindow(reopen = null) {
     if (reopen) me.setOpacity(0);
     if (!flag('offscreen')) me.show();
     pinTop(true); me.focus(); me.moveTop();
+    // From a game (hold Esc / Xbox button) Windows may keep the focus on the game; the helper takes it.
+    if (reopen === 'home' && seamless() && !FAKE) helper.foreground(hwndOf(me)).catch(() => {});
     if (reopen) fadeWindow(0, 1, 320);
   });
   startBlocker();
@@ -183,8 +193,13 @@ function createWindow(reopen = null) {
     if (input.type === 'keyDown' && input.key === 'F12' && input.control) win.webContents.toggleDevTools();
   });
   // Alt+F4 / closing the window quits the whole app (helper included). Nothing restarts it.
-  // Only closeMenuForGame() closes it without quitting.
-  win.on('close', () => { if (me.forGame) return; quitting = true; helper.close(); });
+  // Only closeMenuForGame() closes it without quitting. With a game still open the menu first asks
+  // whether the game goes too.
+  win.on('close', (e) => {
+    if (me.forGame) return;
+    if (needsQuitQuestion()) { e.preventDefault(); askQuit(); return; }
+    quitting = true; helper.close();
+  });
   win.on('closed', () => { if (win === me) win = null; if (!me.forGame) app.quit(); });
 }
 
@@ -370,6 +385,7 @@ async function handoff(s) {
   phase = 'playing';
   closeMenuForGame();
   await keepGameFocused(s);
+  armHome(s);
   afterHandoffLossless(s);
   watchPlaying(s);
 }
@@ -391,6 +407,8 @@ async function watchPlaying(s) {
     if (w) { misses = 0; s.hwnd = w.hwnd; continue; }
     if (++misses < 2) continue;
     // The game is closing: bring the menu back right away; the runner reports the exit.
+    if (s.closing) return;
+    disarmHome();
     phase = 'returning';
     openMenu('returning');
     send('game-returning', { id: s.game.id });
@@ -402,29 +420,153 @@ async function watchPlaying(s) {
   }
 }
 
+// ---------- home during a game: pause, menu, continue ----------
+// phase 'paused': the menu is up over a running game that is minimized and (per game, default on)
+// suspended. 'overlay' is the same for a game that is still starting (no window yet).
+function armHome(s) {
+  if (!seamless() || !helper.watch || session !== s) return;
+  const t = homeflow.triggers(settings);
+  if (!t.esc && !t.pad) { helper.unwatch(); return; }
+  helper.watch(t).then((r) => { s.watchInfo = r; log('watch', r); });
+}
+function disarmHome() { if (helper.unwatch && (isWin || FAKE)) helper.unwatch(); }
+helper.onEvent = (e) => { if (e && e.event === 'home') onHomeTrigger(e.src); };
+
+async function onHomeTrigger(src) {
+  const s = session;
+  if (!s || phase !== 'playing' || s.busy) return;
+  const snap = await helper.snap(s.pid, s.watchNames);
+  const ls = await helper.snap(0, [lossless.EXE]);
+  if (!homeflow.triggerAccepted(snap, s.hwnd, ls)) { log('home ignored: the game is not in front', src); armHome(s); return; }
+  log('home from', src);
+  goHome(s);
+}
+
+// LS is scaling (its output window covers the screen): press its hotkey once to stop it.
+const readLsXml = () => { try { return fs.readFileSync(lsOps.settingsPath(), 'utf8'); } catch { return ''; } };
+async function stopLossless(s) {
+  if (!(isWin || FAKE) || !await lsScaling()) return false;
+  const hk = (s.ls && s.ls.hotkey) || lossless.hotkey(readLsXml());
+  if (!hk) return false;
+  await helper.keys(hk.mods, hk.vk);
+  for (let i = 0; i < 10 && await lsScaling(); i++) await sleep(100);
+  log('LS stopped for the menu');
+  return true;
+}
+
+async function goHome(s) {
+  if (session !== s || s.busy) return;
+  s.busy = true;
+  phase = 'pausing';
+  disarmHome();
+  try {
+    s.lsWasOn = await stopLossless(s);
+    const a = await helper.alive(s.hwnd);
+    if (a && a.win) s.rect = a.win;
+    openMenu('home');
+    send('show-home', { id: s.game.id, paused: true, suspended: homeflow.suspendWanted(s.game) });
+    const w = win;
+    if (w) await Promise.race([w.ready, sleep(4000)]);
+    if (session !== s) return;
+    // The menu covers everything now: put the game away, then freeze it (its sound stops with it).
+    await helper.minimize(s.hwnd);
+    for (let i = 0; i < 12; i++) { const b = await helper.alive(s.hwnd); if (!b || !b.alive || b.minimized) break; await sleep(50); }
+    if (homeflow.suspendWanted(s.game)) {
+      const snap = await helper.snap(s.pid, s.watchNames);
+      const lsSnap = await helper.snap(0, [lossless.EXE]);
+      const pids = homeflow.pausePids(snap, [process.pid, ...((lsSnap && lsSnap.pids) || [])]);
+      const r = pids.length ? await helper.suspend(pids) : null;
+      s.suspended = r && r.suspended ? pids : null;
+      log('paused', pids, r);
+    }
+    if (session === s) { phase = 'paused'; send('game-paused', { id: s.game.id, suspended: !!s.suspended }); }
+  } finally { s.busy = false; }
+}
+
 async function resumeGame() {
-  const s = session; if (!s) return;
+  const s = session; if (!s || s.busy) return;
   if (!s.hwnd) { phase = 'launching'; send('game-returning', { id: s.game.id }); pinTop(true); handoff(s); return; }
-  phase = 'playing';
-  send('game-resumed', { id: s.game.id });
-  await sleep(60);
-  await helper.foreground(s.hwnd);
-  await fadeWindow(1, 0, 200);
-  if (phase === 'playing' && session === s) closeMenuForGame();
-  else if (win) win.setOpacity(1);
+  s.busy = true;
+  try {
+    phase = 'resuming';
+    send('game-resumed', { id: s.game.id });
+    await sleep(60);
+    if (s.suspended) { await helper.resume(s.suspended); s.suspended = null; }
+    await helper.restore(s.hwnd);
+    let a = null;
+    for (let i = 0; i < 30; i++) { a = await helper.alive(s.hwnd); if (!a || !a.alive || !a.minimized) break; await sleep(50); }
+    const fix = homeflow.placeBack(s.rect, a && a.win);
+    if (fix) { await helper.place(s.hwnd, fix); log('window put back', fix); }
+    await helper.foreground(s.hwnd);
+    phase = 'playing';
+    await fadeWindow(1, 0, 200);
+    if (phase === 'playing' && session === s) closeMenuForGame();
+    else if (win) win.setOpacity(1);
+  } finally { s.busy = false; }
+  if (session !== s || phase !== 'playing') return;
+  await keepGameFocused(s);
+  armHome(s);
+  // Lossless Scaling again, the same way as at the start (auto scale, else its hotkey once).
+  if (s.ls && s.ls.mode) afterHandoffLossless(s);
+  else if (s.lsWasOn) { s.ls = { mode: 'hotkey', hotkey: lossless.hotkey(readLsXml()) }; afterHandoffLossless(s); }
+}
+
+// Close the running game: resume, WM_CLOSE, ~5 s, then end it. quiet: the menu is already up and
+// stays as it is (switching games, quitting).
+async function closeRunningGame({ quiet = false } = {}) {
+  if (!runner.running) return { ok: true, how: 'none' };
+  const cur = runner.current; const s = session;
+  if (s) { s.quiet = quiet; s.closing = true; }
+  disarmHome();
+  const exited = new Promise((res) => { const f = (g) => { if (g === cur.game) { runner.off('exited', f); res(true); } }; runner.on('exited', f); });
+  let r;
+  if ((isWin || FAKE) && helper.available) {
+    r = await homeflow.closeGracefully({ helper, pickMain, hwnd: s && s.hwnd, snapFn: () => helper.snap(cur.pid, cur.watchNames), log });
+    if (s) s.suspended = null;
+    if (r.how !== 'stuck') runner.finishNow();
+  } else { runner.kill(); r = { how: 'kill' }; }
+  await Promise.race([exited, sleep(8000)]);
+  log('game closed', r);
+  return { ok: !runner.running, how: r.how };
+}
+
+// ---------- quitting while a game is open ----------
+let quitConfirmed = false;
+const needsQuitQuestion = () => runner.running && !quitConfirmed && !quitting && !!win && !win.isDestroyed() && !win.webContents.isLoading();
+function askQuit() {
+  const g = runner.current && runner.current.game;
+  if (win) showLauncher();
+  send('confirm-quit', { id: g && g.id, title: g && g.title });
+}
+async function quitApp(mode) {
+  quitting = true; quitConfirmed = true;        // from here on nothing opens the menu again
+  disarmHome();
+  if (mode === 'both') await closeRunningGame({ quiet: true });
+  else if (session && session.hwnd) {
+    // Only the menu goes: the game continues on its own, in front.
+    if (session.suspended) { await helper.resume(session.suspended); session.suspended = null; }
+    await helper.restore(session.hwnd); await sleep(150); await helper.foreground(session.hwnd);
+  }
+  app.quit();
 }
 
 async function onMenuFocus() {
-  if (phase === 'playing' && session && session.hwnd) {
+  if (phase === 'playing' && session && session.hwnd && !session.busy) {
     // Clicked the backdrop or Alt+Tab to the menu: show home over the game, like the PS button.
     const a = await helper.alive(session.hwnd);
     if (a && a.alive && phase === 'playing') { phase = 'overlay'; send('show-home', { id: session.game.id }); pinTop(true); }
     return;
   }
-  if (phase === 'home' || phase === 'overlay' || phase === 'returning') pinTop(true);
+  if (phase === 'home' || phase === 'overlay' || phase === 'paused' || phase === 'returning') pinTop(true);
 }
 function onMenuBlur() {
   if (phase === 'home') { pinTop(false); return; }
+  if (phase === 'paused' && session && session.suspended) { pinTop(false); return; }   // a frozen game cannot come to the front
+  if (phase === 'paused' && session && session.hwnd) {
+    // Not frozen (switched off for this game) and the user went back to it by hand: continue.
+    helper.alive(session.hwnd).then((a) => { if (phase === 'paused' && a && a.alive && a.isfg && !a.minimized) resumeGame(); else if (phase === 'paused') pinTop(false); });
+    return;
+  }
   if (phase === 'overlay' && session && session.hwnd) {
     // Went back to the game (clicked it, Alt+Tab): the menu turns black and slides behind it.
     helper.alive(session.hwnd).then((a) => { if (phase === 'overlay' && a && a.alive && a.isfg) resumeGame(); else if (phase === 'overlay') pinTop(false); });
@@ -432,7 +574,9 @@ function onMenuBlur() {
 }
 
 function homeShortcut() {
-  if (session && (phase === 'playing' || phase === 'launching')) {
+  if (session && phase === 'playing' && seamless() && session.hwnd) { goHome(session); return; }
+  if (session && phase === 'paused') { openMenu(null); return; }
+  if (session && phase === 'launching') {
     phase = 'overlay';
     if (!win) { openMenu('home'); return; }
     send('show-home', { id: session.game.id });
@@ -465,21 +609,30 @@ runner.on('exited', (game, info) => {
   state.playSeconds[game.id] = (state.playSeconds[game.id] || 0) + (info.failed ? 0 : info.seconds);
   state.focusId = game.id;
   writeJson(FILES.state, state);
+  const quiet = session && session.game === game && session.quiet;
   phase = 'home'; session = null;
+  disarmHome();
+  if (quiet) return;  // closed from the menu to start another game or to quit: the menu is already up
   openMenu('exit');   // once per game session; only games launched from the menu get here
   send('game-exited', { id: game.id, seconds: info.seconds, failed: info.failed });
 });
 
 // IPC
 ipcMain.handle('init', () => buildInit());
-ipcMain.handle('launch', async (_e, id) => {
+ipcMain.handle('launch', async (_e, id, opts = {}) => {
   const doc = await loadGames();
   const g = doc.games.find((x) => x.id === id);
   if (!g) return { ok: false, error: 'Oyun bulunamadı.' };
+  if (runner.running && runner.current.game.id !== id && opts && opts.replace) {
+    // Another game is open (paused behind the menu): close it first, like a console does.
+    const c = await closeRunningGame({ quiet: true });
+    if (!c.ok) return { ok: false, error: 'Açık olan oyun kapatılamadı.' };
+  }
   state.lastPlayed[id] = Date.now(); state.focusId = id; writeJson(FILES.state, state);
   return launchGame(g);
 });
-ipcMain.handle('kill', () => { runner.kill(); return true; });
+ipcMain.handle('kill', async () => { await closeRunningGame(); return true; });
+ipcMain.handle('quit', (_e, mode) => { if (mode === 'cancel') return false; quitApp(mode === 'menu' ? 'menu' : 'both'); return true; });
 // ---------- game manager ----------
 ipcMain.handle('pick', async (_e, kind, current) => {
   const filters = {
@@ -553,7 +706,7 @@ ipcMain.handle('window', (_e, cmd) => {
   if (!win) return;
   if (cmd === 'minimize') { pinTop(false); win.setFullScreen(false); win.minimize(); }
   if (cmd === 'hide') { if (session && seamless()) return resumeGame(); pinTop(false); win.setFullScreen(false); win.hide(); }
-  if (cmd === 'quit') app.quit();
+  if (cmd === 'quit') { if (needsQuitQuestion()) askQuit(); else app.quit(); }
   if (cmd === 'devtools') win.webContents.toggleDevTools();
 });
 ipcMain.handle('power', (_e, cmd) => {
@@ -588,14 +741,17 @@ app.whenReady().then(() => {
     return net.fetch(pathToFileURL(p).toString());
   });
   createWindow();
-  if (process.env.PS5MENU_SELFTEST) require(process.env.PS5MENU_SELFTEST)({ app, win, getWin: () => win, runner, FILES, readJson, getPhase: () => phase, homeShortcut });
+  if (process.env.PS5MENU_SELFTEST) require(process.env.PS5MENU_SELFTEST)({ app, win, getWin: () => win, runner, FILES, readJson, getPhase: () => phase, homeShortcut, getSession: () => session });
   // Start the window helper early so the first launch does not wait for it.
   if (seamless()) helper.snap(0, []).catch(() => {});
   // Bring the menu back from anywhere (keyboard). Controller PS button is handled in the renderer.
   try { globalShortcut.register('CommandOrControl+Alt+Home', () => homeShortcut()); } catch { /* */ }
   if (isWin && settings.autostart) app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
 });
-app.on('before-quit', () => { quitting = true; helper.close(); });
+app.on('before-quit', (e) => {
+  if (needsQuitQuestion()) { e.preventDefault(); askQuit(); return; }
+  quitting = true; helper.close();
+});
 app.on('will-quit', () => { globalShortcut.unregisterAll(); helper.close(); });
 // The menu window is closed on purpose during a game; only quit when that is not the case.
 app.on('window-all-closed', () => { if (quitting || !session) app.quit(); });

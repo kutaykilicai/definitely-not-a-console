@@ -1,7 +1,7 @@
 (function (root) {
   root.STRINGS = {
     tr: {
-      games: 'Oyunlar', media: 'Medya İçerikleri', play: 'Oyna', resume: 'Oyuna Dön', closeGame: 'Oyunu Kapat',
+      games: 'Oyunlar', media: 'Medya İçerikleri', play: 'Oyna', resume: 'Devam Et', closeGame: 'Oyunu Kapat',
       library: 'Oyun Kütüphanesi', desktop: 'Masaüstü', openDesktop: 'Masaüstüne Geç', open: 'Aç',
       search: 'Ara', settings: 'Ayarlar', profile: 'Profil',
       info: 'Bilgi', openLocation: 'Dosya Konumunu Aç', editList: 'Oyun Listesini Düzenle', removeHome: 'Ana Ekrandan Kaldır',
@@ -37,6 +37,16 @@
       moveUp: 'Yukarı taşı', moveDown: 'Aşağı taşı', saved: 'Kaydedildi', hiddenTag: 'gizli', showHome: 'Ana ekranda göster',
       rowOrder: 'Sıralama', orderRecent: 'Son oynanan önde', orderManual: 'Benim sıram',
       typeHint: 'Yazıp Enter\'a bas. Esc vazgeçer.', pickFirst: 'Önce programı seç.',
+      pausedStatus: 'Duraklatıldı', ok: 'Tamam', cancel: 'İptal', seconds: 'sn',
+      switchTitle: '{name} kapatılacak',
+      switchBody: '{name} başlatılmadan önce açık olan oyun kapanır. Kaydetmediğin ilerleme kaybolur.',
+      quitTitle: 'Bir oyun hâlâ açık',
+      quitBody: 'Menüden çıkarken {name} de kapatılsın mı? Yalnızca menüyü kapatırsan oyun kaldığı yerden devam eder.',
+      quitBoth: 'İkisini de kapat', quitMenuOnly: 'Yalnızca menüyü kapat',
+      homeEsc: 'Oyunda Esc\'ye basılı tut: menüye dön', homeEscMs: 'Esc için basılı tutma süresi',
+      homePad: 'Oyunda Xbox düğmesine basılı tut: menüye dön', homePadMs: 'Xbox düğmesi için basılı tutma süresi',
+      fSuspend: 'Menüdeyken oyunu duraklat',
+      fSuspendOffHint: 'Kapalıyken oyun menü açıkken simge durumunda çalışmaya devam eder. Duraklatılmayı sevmeyen bir emülatör için kapat.',
     },
     en: {
       games: 'Games', media: 'Media', play: 'Play', resume: 'Resume', closeGame: 'Close Game',
@@ -73,6 +83,16 @@
       moveUp: 'Move up', moveDown: 'Move down', saved: 'Saved', hiddenTag: 'hidden', showHome: 'Show on Home',
       rowOrder: 'Order', orderRecent: 'Recently played first', orderManual: 'My order',
       typeHint: 'Type and press Enter. Esc cancels.', pickFirst: 'Pick the program first.',
+      pausedStatus: 'Paused', ok: 'OK', cancel: 'Cancel', seconds: 's',
+      switchTitle: '{name} will be closed',
+      switchBody: 'The open game closes before {name} starts. Unsaved progress will be lost.',
+      quitTitle: 'A game is still open',
+      quitBody: 'Close {name} as well? If only the menu closes, the game continues where it was.',
+      quitBoth: 'Close both', quitMenuOnly: 'Close the menu only',
+      homeEsc: 'Hold Esc in a game to go home', homeEscMs: 'Esc hold time',
+      homePad: 'Hold the Xbox button in a game to go home', homePadMs: 'Xbox button hold time',
+      fSuspend: 'Pause the game while in the menu',
+      fSuspendOffHint: 'When off, the game keeps running minimized while the menu is open. Turn it off for an emulator that does not like being paused.',
     },
   };
 })(typeof window !== 'undefined' ? window : globalThis);

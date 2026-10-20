@@ -90,28 +90,39 @@ async function waitForGameWindow(snapFn, opts = {}, { now = Date.now, sleep = (m
 class WinHelper {
   constructor(exe) {
     this.exe = exe; this.proc = null; this.queue = []; this.buf = '';
+    this.onEvent = null;   // unsolicited lines from the helper, e.g. {"event":"home","src":"esc"}
   }
   get available() { return isWin && !!this.exe && fs.existsSync(this.exe); }
   _ensure() {
     if (this.closed) return false; // quitting: never start it again
     if (this.proc || !this.available) return !!this.proc;
+    let p;
     try {
-      this.proc = spawn(this.exe, [], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
+      p = spawn(this.exe, [], { stdio: ['pipe', 'pipe', 'ignore'], windowsHide: true });
     } catch { this.proc = null; return false; }
+    this._attach(p);
+    return true;
+  }
+  // Reads the helper's stdout: one JSON reply per request, in order; lines with "event" are
+  // reports from its watcher thread and go to onEvent instead.
+  _attach(p) {
+    this.proc = p;
     this.proc.stdout.setEncoding('utf8');
     this.proc.stdout.on('data', (d) => {
       this.buf += d; let i;
       while ((i = this.buf.indexOf('\n')) >= 0) {
         const line = this.buf.slice(0, i).trim(); this.buf = this.buf.slice(i + 1);
+        if (!line) continue;
+        let o = null; try { o = JSON.parse(line); } catch { o = null; }
+        if (o && o.event) { try { if (this.onEvent) this.onEvent(o); } catch { /* */ } continue; }
         const q = this.queue.shift(); if (!q) continue;
         clearTimeout(q.t);
-        try { q.resolve(JSON.parse(line)); } catch { q.resolve(null); }
+        q.resolve(o);
       }
     });
     const dead = () => { this.proc = null; this.buf = ''; for (const q of this.queue.splice(0)) { clearTimeout(q.t); q.resolve(null); } };
     this.proc.on('exit', dead); this.proc.on('error', dead);
     this.proc.stdin.on('error', () => {});
-    return true;
   }
   request(line, timeoutMs = 3000) {
     if (!this._ensure()) return Promise.resolve(null);
@@ -121,17 +132,32 @@ class WinHelper {
       try { this.proc.stdin.write(line.replace(/[\r\n]/g, ' ') + '\n'); } catch { resolve(null); }
     });
   }
-  _restart() { try { this.proc && this.proc.kill(); } catch { /* */ } this.proc = null; }
+  // A stuck helper is asked to quit first (it then resumes anything it paused), killed only after that.
+  _restart() { const p = this.proc; this.proc = null; this._stop(p); }
+  _stop(p) {
+    if (!p) return;
+    try { p.stdin.end('quit\n'); } catch { /* */ }
+    const t = setTimeout(() => { try { p.kill(); } catch { /* */ } }, 1500); if (t.unref) t.unref();
+  }
   snap(rootPid, names = []) { return this.request(`snap ${rootPid || 0} ${names.map((n) => n.toLowerCase()).join('|')}`); }
   alive(hwnd) { return this.request(`alive ${hwnd}`); }
   foreground(hwnd) { return this.request(`fg ${hwnd}`); }
   below(hwnd, after) { return this.request(`below ${hwnd} ${after}`); }
   minimize(hwnd) { return this.request(`minimize ${hwnd}`); }
   keys(mods, vk) { return this.request(`keys ${mods || '-'} ${vk}`); }
+  restore(hwnd) { return this.request(`restore ${hwnd}`); }
+  place(hwnd, r) { return this.request(`place ${hwnd} ${r.x} ${r.y} ${r.w} ${r.h}`); }
+  closeWindow(hwnd) { return this.request(`close ${hwnd}`); }
+  suspend(pids) { return this.request(`suspend ${pids.join(',')}`); }
+  resume(pids) { return this.request(`resume ${pids === 'all' ? 'all' : pids.join(',')}`); }
+  term(pids) { return this.request(`term ${pids.join(',')}`); }
+  watch(o) { return this.request(`watch ${o.esc ? 1 : 0} ${Math.round(o.escMs || 1000)} ${o.pad ? 1 : 0} ${Math.round(o.padMs || 1000)}`); }
+  unwatch() { return this.request('unwatch'); }
+  // Quitting: the helper resumes anything it paused before it exits.
   close() {
     this.closed = true;
     const p = this.proc; this.proc = null;
-    if (p) { try { p.stdin.end('quit\n'); } catch { /* */ } try { p.kill(); } catch { /* */ } }
+    this._stop(p);
   }
 }
 

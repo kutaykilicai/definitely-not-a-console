@@ -18,7 +18,11 @@
   let overlays = [];
   let inputMode = 'pad';
   let running = null;
+  let paused = false;      // the running game is paused behind the menu (hold Esc / Xbox button)
   let launching = false;
+  // Opened by holding Esc in a game: that Esc may still be down. Its auto-repeat must not act as
+  // "back" here; the guard ends when Esc is released.
+  let escGuard = REOPEN === 'home' ? performance.now() + 1500 : 0;
   const timers = {};
   let lastMouse = 0; let moveTimes = [];
   // Treat the mouse as in use only after real movement (several events), not a single synthetic move.
@@ -124,7 +128,7 @@
       d.style.visibility = x > W + 20 || x < -200 ? 'hidden' : '';
       const it = items[i];
       let r = d.querySelector('.run');
-      if (it && it.kind === 'game' && running === it.id) { if (!r) { r = document.createElement('i'); r.className = 'run'; d.appendChild(r); } } else if (r) r.remove();
+      if (it && it.kind === 'game' && running === it.id) { if (!r) { r = document.createElement('i'); r.className = 'run'; d.appendChild(r); } r.classList.toggle('paused', paused); } else if (r) r.remove();
       if (instant) { void d.offsetWidth; d.style.transition = ''; }
     });
     const ring = $('#ring');
@@ -205,7 +209,7 @@
       const art = (g.art && (g.art.cover || g.art.icon)) || null;
       side.querySelector('.img').style.backgroundImage = art ? cssUrl(art) : genTile(g).style;
       side.querySelector('.tag').textContent = /ps4|ps3|ps2/i.test(g.badge || '') ? t('ps4Game').replace('PS4', g.badge.toUpperCase()) : t('pcGame');
-      side.querySelector('.status').textContent = running === g.id ? t('running') : g.installed ? t('installed') : t('notFound');
+      side.querySelector('.status').textContent = running === g.id ? (paused ? t('pausedStatus') : t('running')) : g.installed ? t('installed') : t('notFound');
       side.querySelector('.ic').innerHTML = ICONS.clock;
       const [l, r] = side.querySelectorAll('.col');
       l.querySelector('.k').textContent = t('playTime'); l.querySelector('.v').textContent = fmtDuration(g.playSeconds);
@@ -308,6 +312,45 @@
     pushOverlay(o);
   }
 
+  // A PS5-style question with a short explanation and two or three buttons in a row.
+  // options: [{ label, run }]; focus: the button selected at first; cancel: the one B/Esc picks.
+  function choiceDialog({ title, body, options, focus = 0, cancel = null, hintOk }) {
+    const el = document.createElement('div');
+    el.innerHTML = `<div class="dimbg"></div><div class="dialog choice"><div class="q">${esc(title)}</div>${body ? `<div class="sub">${esc(body)}</div>` : ''}<div class="opts">${options.map((o, i) => `<div class="btn" data-i="${i}">${esc(o.label)}</div>`).join('')}</div></div>`;
+    const o = { el, index: focus, kind: 'choice', hints: [['A', hintOk || t('select')], ['B', cancel != null ? options[cancel].label : t('back')]] };
+    o.render = () => el.querySelectorAll('.opts .btn').forEach((b) => { b.classList.toggle('focus', +b.dataset.i === o.index); b.onclick = () => { o.index = +b.dataset.i; o.input('select'); }; });
+    o.input = (a) => {
+      if (a === 'left' || a === 'right') { const n = Math.max(0, Math.min(options.length - 1, o.index + (a === 'left' ? -1 : 1))); if (n !== o.index) { o.index = n; SOUND.play('focus'); o.render(); } else SOUND.play('bump'); }
+      else if (a === 'back') { popOverlay(); if (cancel != null && options[cancel].run) options[cancel].run(); }
+      else if (a === 'select') { popOverlay(true); SOUND.play('select'); const c = options[o.index]; if (c && c.run) c.run(); }
+    };
+    pushOverlay(o);
+    return o;
+  }
+  const runningGame = () => data.games.find((x) => x.id === running) || (data.allGames || []).find((x) => x.id === running);
+
+  // Starting another game while one is open: like the console, the open one is closed first.
+  function switchDialog(g) {
+    const cur = runningGame();
+    choiceDialog({
+      title: t('switchTitle', { name: cur ? cur.title : '' }),
+      body: t('switchBody', { name: g.title }),
+      options: [{ label: t('cancel') }, { label: t('ok'), run: () => launch(g, { replace: true }) }],
+      focus: 1, cancel: 0,
+    });
+  }
+  // Alt+F4 / Menüden Çık while a game is open.
+  function quitDialog(d) {
+    if (overlays.some((o) => o.kind === 'choice' && o.quit)) return;
+    const o = choiceDialog({
+      title: t('quitTitle'),
+      body: t('quitBody', { name: (d && d.title) || '' }),
+      options: [{ label: t('cancel'), run: () => api.quit('cancel') }, { label: t('quitMenuOnly'), run: () => api.quit('menu') }, { label: t('quitBoth'), run: () => api.quit('both') }],
+      focus: 2, cancel: 0,
+    });
+    o.quit = true;
+  }
+
   function gameMenu(g, from) {
     const entries = [];
     if (running === g.id) entries.push({ label: t('closeGame'), icon: ICONS.power, danger: true, run: () => api.kill() });
@@ -342,8 +385,8 @@
 
   function editOverlay(g) {
     const ls = data.lossless && data.lossless.installed;
-    const d = g ? { id: g.id, title: g.title, exe: g.exe || '', args: g.args || '', workingDir: g.workingDir || '', sceSys: g.sceSys || '', losslessScaling: !!g.losslessScaling, hidden: !!g.hidden, badge: g.badge || '', artPaths: g.artPaths }
-      : { title: '', exe: '', args: '', workingDir: '', sceSys: '', losslessScaling: false, badge: '' };
+    const d = g ? { id: g.id, title: g.title, exe: g.exe || '', args: g.args || '', workingDir: g.workingDir || '', sceSys: g.sceSys || '', losslessScaling: !!g.losslessScaling, suspendInMenu: g.suspendInMenu !== false, hidden: !!g.hidden, badge: g.badge || '', artPaths: g.artPaths }
+      : { title: '', exe: '', args: '', workingDir: '', sceSys: '', losslessScaling: false, suspendInMenu: true, badge: '' };
     const pickExe = async () => {
       const r = await api.pick('exe', d.exe); if (!r) return;
       if (r.error) { toast(t('fExe'), r.error); return; }
@@ -391,6 +434,7 @@
         { label: t('fArt'), icon: ICONS.image, value: artLabel(d), stay: true, run: artMenu },
         ls ? { label: t('fLs'), icon: ICONS.desktop, value: d.losslessScaling ? t('on') : t('off'), stay: true, run: () => { d.losslessScaling = !d.losslessScaling; o.render(); } }
           : { label: t('lsMissing'), icon: ICONS.info, value: '', stay: true, run: () => toast(t('lsMissing'), t('lsMissingHint')) },
+        { label: t('fSuspend'), icon: ICONS.pad, value: d.suspendInMenu ? t('on') : t('off'), stay: true, run: () => { d.suspendInMenu = !d.suspendInMenu; o.render(); if (!d.suspendInMenu) toast(t('fSuspend'), t('fSuspendOffHint')); } },
       ];
       if (d.hidden) list.push({ label: t('showHome'), icon: ICONS.check, value: t('off'), stay: true, run: () => { d.hidden = false; o.render(); } });
       list.push({ label: t('fSave'), icon: ICONS.check, stay: true, run: save });
@@ -473,12 +517,22 @@
       { label: t('introScreen'), icon: ICONS.info, value: introLabel(st.intro), stay: true, run: () => set('intro', intros[(intros.indexOf(data.settings.intro) + 1) % 3]) },
       { label: t('autostart'), icon: ICONS.power, value: st.autostart ? t('on') : t('off'), stay: true, run: () => set('autostart', !data.settings.autostart) },
       { label: t('fullscreen'), icon: ICONS.desktop, value: st.fullscreen !== false ? t('on') : t('off'), stay: true, run: () => set('fullscreen', data.settings.fullscreen === false) },
+      { label: t('homeEsc'), icon: ICONS.pad, value: st.homeEsc !== false ? t('on') : t('off'), stay: true, run: () => set('homeEsc', data.settings.homeEsc === false) },
+      { label: t('homeEscMs'), icon: ICONS.clock, value: holdLabel(st.homeEscMs), stay: true, run: () => set('homeEscMs', nextHold(data.settings.homeEscMs)) },
+      { label: t('homePad'), icon: ICONS.pad, value: st.homePad !== false ? t('on') : t('off'), stay: true, run: () => set('homePad', data.settings.homePad === false) },
+      { label: t('homePadMs'), icon: ICONS.clock, value: holdLabel(st.homePadMs), stay: true, run: () => set('homePadMs', nextHold(data.settings.homePadMs)) },
       { label: t('exitMenu'), icon: ICONS.power, danger: true, run: () => api.window('quit') },
     ];
     const o = listOverlay({ entries: () => { const e = entries(); Object.assign(st, data.settings); return e; }, full: true, title: t('settings'), keepOpen: true });
     o.input = ((orig) => (a) => { orig(a); })(o.input);
     pushOverlay(o);
   }
+
+  // Hold time for going home during a game: 0,6 / 1 / 1,5 / 2 s.
+  const HOLDS = [600, 1000, 1500, 2000];
+  const holdOf = (v) => (HOLDS.includes(Number(v)) ? Number(v) : 1000);
+  const nextHold = (v) => HOLDS[(HOLDS.indexOf(holdOf(v)) + 1) % HOLDS.length];
+  const holdLabel = (v) => `${(holdOf(v) / 1000).toLocaleString(data.settings.language === 'en' ? 'en-GB' : 'tr-TR')} ${t('seconds')}`;
 
   function powerMenu() {
     const entries = [
@@ -521,26 +575,27 @@
   }
 
   // ---------- actions ----------
-  async function launch(g) {
+  async function launch(g, opts = {}) {
     if (launching) return;
     if (running && running === g.id) { api.window('hide'); return; }
-    if (running) { SOUND.play('error'); toast(t('launchFailed'), data.settings.language === 'en' ? 'Another game is already running.' : 'Zaten açık bir oyun var.'); return; }
     if (!g.exe) { SOUND.play('error'); toast(t('launchFailed'), t('missingExe'), g.art && g.art.icon); return; }
+    if (running && !opts.replace) { switchDialog(g); return; }
     launching = true;
     const b = $('.btn.primary'); b.classList.add('press'); setTimeout(() => b.classList.remove('press'), 140);
     SOUND.play('launch');
     const bo = $('#blackout'); bo.classList.add('fast'); bo.classList.remove('off');
     launchScreen('art', g);
     await new Promise((r) => setTimeout(r, 320));
-    const res = await api.launch(g.id);
+    const res = await api.launch(g.id, opts.replace ? { replace: true } : {});
     launching = false;
+    if (opts.replace && res && res.ok) { running = null; paused = false; }
     if (!res || !res.ok) {
       launchScreen('off');
       bo.classList.add('off'); setTimeout(() => bo.classList.remove('fast'), 400);
       SOUND.play('error'); toast(t('launchFailed'), (res && res.error) || '', g.art && g.art.icon);
       return;
     }
-    running = g.id;
+    running = g.id; paused = false;
     g.lastPlayed = Date.now();
     SOUND.startAmbient(false);
   }
@@ -596,7 +651,9 @@
 
   // ---------- input ----------
   function setMode(m) { if (m === inputMode) return; inputMode = m; renderIntroMsg(); const top = overlays[overlays.length - 1]; if (top) hints(top.hints || [['A', t('select')], ['B', t('back')]]); }
+  window.addEventListener('keyup', (e) => { if (e.key === 'Escape') escGuard = 0; });
   window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && escGuard && (e.repeat || performance.now() < escGuard)) { e.preventDefault(); return; }
     if (e.target && e.target.tagName === 'INPUT') return;   // text fields handle their own keys
     const a = INPUT.keyAction(e);
     if (a) { e.preventDefault(); setMode('keyboard'); document.body.classList.add('nocursor'); dispatch(a); }
@@ -695,14 +752,16 @@
   // The game window is in front: the launch screen becomes the black backdrop behind it.
   api.on('game-handoff', () => { $('#blackout').classList.remove('off'); launchScreen('black'); });
   api.on('game-returning', () => { closeAll(); $('#blackout').classList.remove('off'); launchScreen('busy'); });
-  api.on('game-resumed', () => { closeAll(); $('#blackout').classList.add('fast'); $('#blackout').classList.remove('off'); launchScreen('black'); });
+  api.on('game-resumed', () => { closeAll(); paused = false; $('#blackout').classList.add('fast'); $('#blackout').classList.remove('off'); launchScreen('black'); });
+  api.on('game-paused', (d) => { if (d && d.id) { running = d.id; paused = true; layoutRow(true); renderHero(); } });
+  api.on('confirm-quit', (d) => quitDialog(d));
   // Home over a running game (Ctrl+Alt+Home, Alt+Tab to the menu).
   api.on('show-home', (d) => {
     launchScreen('off'); const bo = $('#blackout'); bo.classList.remove('fast'); bo.classList.add('off');
-    if (d && d.id) refresh(d.id);
+    if (d && d.id) { running = d.id; paused = !!d.paused; nav.zone = 'row'; if (nav.tab !== 'games') { nav.tab = 'games'; } refresh(d.id); }
   });
   api.on('game-exited', async (d) => {
-    running = null;
+    running = null; paused = false;
     const fresh = await api.init(); data = fresh; applySettings();
     nav.zone = 'row'; nav.tab = 'games'; closeAll();
     refresh(d.id);
@@ -715,7 +774,7 @@
 
   async function main() {
     data = await api.init();
-    running = data.running;
+    running = data.running; paused = !!data.paused;
     applySettings(); loadFonts(data.user.fonts);
     SOUND.loadUser(data.user.sounds);
     if (forced.tab) nav.tab = forced.tab;

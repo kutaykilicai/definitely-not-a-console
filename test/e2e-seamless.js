@@ -1,7 +1,7 @@
 // The real launch chain with a scripted window helper (test/fake-helper.js), as on Windows:
 // launch screen -> game window -> menu window destroyed -> LS minimized, auto scale (or hotkey
 // fallback) -> game keeps focus -> game exits -> menu made again, game focused.
-// Also: Ctrl+Alt+Home brings the menu up during a game and Oyuna Dön closes it again;
+// Also: Ctrl+Alt+Home brings the menu up during a game (game paused) and Devam Et closes it again;
 // closing the shown menu quits the app.
 const fs = require('fs'); const path = require('path');
 const { BrowserWindow } = require('electron');
@@ -55,13 +55,13 @@ module.exports = ({ app, getWin, runner, FILES, readJson, getPhase, homeShortcut
     await js(`(() => { const i = window.__ps5.items.findIndex((x) => x.id === "ornek-oyun"); window.__ps5.nav.row = i; window.__ps5.dispatch("select"); })()`);
     await waitFor(() => !getWin() && getPhase() === 'playing', 15000);
     homeShortcut();
-    const up = await waitFor(() => getWin() && getWin().isVisible() && getPhase() === 'overlay', 6000);
+    const up = await waitFor(() => getWin() && getWin().isVisible() && getPhase() === 'paused', 6000);   // 1.3.0: the game is paused behind the menu
     check('Ctrl+Alt+Home during a game shows the menu', up, getPhase());
     await ready(); await sleep(600);
     check('menu knows the game is running', (await js('window.__ps5.items[window.__ps5.nav.row].id')) === 'ornek-oyun');
-    await js('setTimeout(() => window.ps5.window("hide"), 0), true');   // what Oyuna Dön does; that window goes away
+    await js('setTimeout(() => window.ps5.window("hide"), 0), true');   // what Devam Et does; that window goes away
     const gone = await waitFor(() => !getWin() && getPhase() === 'playing', 6000);
-    check('Oyuna Dön closes the menu window again', gone, getPhase());
+    check('Devam Et closes the menu window again', gone, getPhase());
     const back = await waitFor(() => getWin() && getPhase() === 'home', 20000, 200);
     check('menu back once after that game exits', back && windows() === 1);
   }

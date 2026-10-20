@@ -144,6 +144,12 @@ ok('library: migration from the old portable data folder and from an older confi
   assert.ok(fs.existsSync(path.join(cfg, 'games.json')), 'old folder left as it was');
   fs.rmSync(tmp, { recursive: true, force: true });
 });
+ok('library: "pause in menu" is on by default, only off is stored', () => {
+  const L = require('../app/lib/library.js'); const doc = { version: 1, games: [] };
+  const g = L.saveEntry(doc, { title: 'A', exe: 'C:\\g\\a.exe', suspendInMenu: true }); assert.ok(!('suspendInMenu' in g));
+  L.saveEntry(doc, { id: g.id, title: 'A', exe: 'C:\\g\\a.exe', suspendInMenu: false }); assert.strictEqual(doc.games[0].suspendInMenu, false);
+  L.saveEntry(doc, { id: g.id, title: 'A', exe: 'C:\\g\\a.exe', suspendInMenu: true }); assert.ok(!('suspendInMenu' in doc.games[0]));
+});
 ok('library: dump search roots come from the user\'s own paths', () => {
   const { deriveRoots } = require('../app/lib/library.js');
   const r = deriveRoots([{ exe: 'C:\\Users\\a\\Emu\\shadPS4\\shadPS4.exe', args: '-g "E:\\Oyunlar\\Dump-CUSA1\\CUSA1\\eboot.bin"' }]);

@@ -23,7 +23,7 @@ function makeId(title, taken) {
 }
 
 // Fields the manager is allowed to write; everything else on an entry is kept as it was.
-const EDITABLE = ['title', 'exe', 'args', 'workingDir', 'sceSys', 'losslessScaling', 'hidden', 'badge', 'description', 'section'];
+const EDITABLE = ['title', 'exe', 'args', 'workingDir', 'sceSys', 'losslessScaling', 'suspendInMenu', 'hidden', 'badge', 'description', 'section'];
 
 function saveEntry(doc, draft) {
   const games = doc.games || (doc.games = []);
@@ -38,6 +38,7 @@ function saveEntry(doc, draft) {
   if (!g.workingDir) delete g.workingDir;
   if (!g.sceSys) delete g.sceSys;
   if (!g.losslessScaling) delete g.losslessScaling;
+  if (g.suspendInMenu !== false) delete g.suspendInMenu;   // on by default; only "off" is stored
   if (!g.hidden) delete g.hidden;
   return g;
 }

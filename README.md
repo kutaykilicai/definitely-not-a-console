@@ -17,7 +17,7 @@
 
 ## Nedir
 
-Windows için yazılmış, PS5 ana ekranına benzeyen bir oyun başlatıcı. Bilgisayarındaki oyunları, emülatörleri ve kısayolları büyük kapaklarıyla tek bir ekranda toplar. Kanepeden kumandayla da masa başında klavyeyle de rahat kullanılsın diye yapıldı. Bir oyunu başlattığında yükleme ekranı oyun penceresi hazır olana kadar kalır, sonra menü tamamen kapanır ve oyunun önünde ya da arkasında hiçbir penceresi kalmaz. Oyun kapanınca menü ana ekranda, o oyun seçili hâlde geri gelir.
+Windows için yazılmış, PS5 ana ekranına benzeyen bir oyun başlatıcı. Bilgisayarındaki oyunları, emülatörleri ve kısayolları büyük kapaklarıyla tek bir ekranda toplar. Kanepeden kumandayla da masa başında klavyeyle de rahat kullanılsın diye yapıldı. Bir oyunu başlattığında yükleme ekranı oyun penceresi hazır olana kadar kalır, sonra menü tamamen kapanır ve oyunun önünde ya da arkasında hiçbir penceresi kalmaz. Oyun kapanınca menü ana ekranda, o oyun seçili hâlde geri gelir. Oyunun ortasında Esc'ye ya da kumandadaki Xbox düğmesine basılı tutarsan oyun olduğu yerde durur ve menü açılır; oradan kaldığın yere dönebilir ya da başka bir oyuna geçebilirsin.
 
 Resmi bir ürün değil, hayran işi bir projedir. Sony ile hiçbir bağı yoktur.
 
@@ -27,17 +27,18 @@ Resmi bir ürün değil, hayran işi bir projedir. Sony ile hiçbir bağı yoktu
 
 - Oyun ekleme, düzenleme, sıralama ve silme uygulamanın içinden yapılır, dosya düzenlemen gerekmez.
 - PS4 dökümlerinin `sce_sys` klasöründen kapak, arka plan ve oyun adı alınır; görseli olmayan oyunlara programın simgesiyle bir kutucuk hazırlanır.
-- Xbox kumandası ve klavye desteği, oyun sırasında Ctrl+Alt+Home ile menüye dönüş.
+- Xbox kumandası ve klavye desteği.
+- Konsoldaki gibi oyun sırasında menüye dönüş: Esc'ye ya da Xbox düğmesine basılı tut, oyun duraklar, menüden **Devam Et** ile kaldığın yerden sürer. Başka bir oyun seçersen açık olan önce kapatılır.
 - İstersen oyun Lossless Scaling ile birlikte açılır ve ölçekleme kendiliğinden başlar.
 - Tek tıkla kurulum, yönetici izni istemez.
 
 ## Kurulum
 
-[Releases](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases/latest) sayfasından `Definitely.Not.PS5.Menu.Setup.1.2.1.exe` dosyasını indirip çalıştır. Kurulum birkaç saniye sürer, yönetici izni istemez, masaüstüne ve Başlat menüsüne kısayol koyar ve bitince menüyü açar.
+[Releases](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases/latest) sayfasından `Definitely.Not.PS5.Menu.Setup.1.3.0.exe` dosyasını indirip çalıştır. Kurulum birkaç saniye sürer, yönetici izni istemez, masaüstüne ve Başlat menüsüne kısayol koyar ve bitince menüyü açar.
 
 Uygulama imzalı olmadığı için Windows ilk açılışta "Windows bilgisayarınızı korudu" uyarısı gösterebilir. O pencerede **Diğer bilgiler** yazısına, ardından **Yine de çalıştır** düğmesine bas. Bunu yalnızca bir kez yapman gerekir.
 
-Kurmadan denemek istersen aynı sayfadaki `Definitely-Not-PS5-Menu-1.2.1-portable.zip` dosyasını bir klasöre çıkarıp içindeki `Definitely Not PS5 Menu.exe` dosyasını açabilirsin.
+Kurmadan denemek istersen aynı sayfadaki `Definitely-Not-PS5-Menu-1.3.0-portable.zip` dosyasını bir klasöre çıkarıp içindeki `Definitely Not PS5 Menu.exe` dosyasını açabilirsin.
 
 <table>
 <tr>
@@ -77,10 +78,22 @@ Sonradan değiştirmek istediğinde oyunun seçeneklerinden **Oyunu Düzenle**'y
 | Oyun seçenekleri | Menü (≡) | O |
 | Oyunlar / Medya sekmesi | LB, RB | Q, E |
 | Ana ekrana dön | Xbox düğmesi ya da Görünüm + Menü | H |
-| Oyun açıkken menüye dön | | Ctrl+Alt+Home |
+| Oyun açıkken menüye dön | Xbox düğmesine ya da Görünüm + Menü'ye 1 sn basılı tut | Esc'ye 1 sn basılı tut ya da Ctrl+Alt+Home |
 | Menüden çık | | Alt+F4 |
 
-Oyun açıkken Ctrl+Alt+Home'a basınca oyun kapanmaz, arkada çalışmaya devam eder. Menüde **Oyuna Dön**'e basınca kaldığın yere geçersin.
+## Oyun sırasında menüye dönme
+
+Oyundayken Esc'ye ya da kumandadaki Xbox düğmesine bir saniye kadar basılı tut. Kısa basışlar her zamanki gibi oyuna gider, yani oyunun kendi duraklatma menüsü yine Esc ile açılır. Basılı tuttuğunda:
+
+1. Lossless Scaling ölçekliyorsa durdurulur.
+2. Oyunun penceresi simge durumuna alınır ve oyun duraklatılır, sesi de kesilir.
+3. Menü açılır; oyunun kutucuğunda küçük bir duraklatma işareti, düğmesinde **Devam Et** yazar.
+
+**Devam Et**'e bastığında oyun kaldığı yerden sürer, tam ekran olarak öne gelir, menü kapanır ve oyunda Lossless Scaling açıksa yeniden başlatılır. Menüdeyken başka bir oyun seçersen "… kapatılacak" uyarısı çıkar; onaylarsan açık oyun kendi kapatma isteğiyle kapatılır, beş saniye içinde kapanmazsa sonlandırılır ve yeni oyun açılır. Kaydetmediğin ilerleme bu yüzden gider, önce oyunun içinde kaydetmeyi unutma.
+
+Oyun açıkken menüyü Alt+F4 ile kapatırsan menü önce sorar: **İkisini de kapat** (varsayılan), **Yalnızca menüyü kapat** ya da **İptal**. Yalnızca menüyü kapatırsan oyun öne gelir ve kendi başına sürer. Menü bundan sonra kendiliğinden yeniden açılmaz.
+
+Ayarlar ekranında Esc ve Xbox düğmesi için ayrı ayrı aç/kapat ve basılı tutma süresi (0,6 / 1 / 1,5 / 2 sn) seçilebilir. Xbox düğmesine basınca Windows'ta Game Bar açılıyorsa onu Windows Ayarlar > Oyun > Game Bar bölümünden kapatabilir ya da Görünüm + Menü'yü birlikte basılı tutabilirsin. Bazı emülatörler duraklatılmayı sevmeyebilir; öyle bir oyunda **Oyunu Düzenle** ekranındaki **Menüdeyken oyunu duraklat** satırını kapat. O zaman oyun menü açıkken simge durumunda çalışmaya devam eder.
 
 ## Lossless Scaling
 
@@ -111,7 +124,7 @@ Menü, Windows'un Xbox kumandası desteğini kullanır. Kumanda başka bir oyund
 
 ## Geliştirme
 
-Uygulama Electron ile yazıldı. Oyun pencerelerini izleyen küçük yardımcı program `native/ps5winhelper.c` içinde, mingw ile derlenir. Testler `node test/unit.test.js` ve `node test/winwatch.test.js` ile çalışır, kurulum dosyaları `node tools/build.js` ile `dist/` klasörüne çıkar.
+Uygulama Electron ile yazıldı. Oyun pencerelerini izleyen küçük yardımcı program `native/ps5winhelper.c` içinde, mingw ile derlenir. Testler `node test/unit.test.js`, `node test/winwatch.test.js` ve `node test/homeflow.test.js` ile çalışır; yardımcının basılı tutma mantığı `gcc native/hold_test.c` ile ayrıca denenir, kurulum dosyaları `node tools/build.js` ile `dist/` klasörüne çıkar.
 
 ```
 cd app && npm install && npx electron . --windowed
@@ -127,8 +140,8 @@ Bu proje resmi değildir; Sony Interactive Entertainment ile bağlantısı yoktu
 
 *Definitely not a PS5 menu. It just looks a bit like one.*
 
-A game launcher for Windows that looks like the PS5 home screen. You add games, emulators or shortcuts from inside the app (the **+** tile, or Settings > Oyunları Yönet), pick a cover image or point it at a PS4 dump's `sce_sys` folder, and launch everything with a keyboard or an Xbox controller. While a game runs the menu window is closed completely and comes back when the game exits; press Ctrl+Alt+Home during a game to bring it back early. If Lossless Scaling is installed through Steam, any game can start with it and scale automatically.
+A game launcher for Windows that looks like the PS5 home screen. You add games, emulators or shortcuts from inside the app (the **+** tile, or Settings > Oyunları Yönet), pick a cover image or point it at a PS4 dump's `sce_sys` folder, and launch everything with a keyboard or an Xbox controller. While a game runs the menu window is closed completely and comes back when the game exits. Hold Esc or the Xbox button for about a second during a game to pause it and open the menu, then pick Devam Et to continue where you left off; starting another game closes the open one first, like on a console. If Lossless Scaling is installed through Steam, any game can start with it and scale automatically.
 
-Download `Definitely.Not.PS5.Menu.Setup.1.2.1.exe` from the [Releases](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases/latest) page and run it. It installs per user, needs no admin rights and adds Start Menu and desktop shortcuts. The app is not code signed, so SmartScreen may warn you the first time: click **More info**, then **Run anyway**. A portable zip is available as well. To uninstall, use Windows Settings > Apps. The interface is in Turkish by default; switch it under Ayarlar > Dil / Language.
+Download `Definitely.Not.PS5.Menu.Setup.1.3.0.exe` from the [Releases](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases/latest) page and run it. It installs per user, needs no admin rights and adds Start Menu and desktop shortcuts. The app is not code signed, so SmartScreen may warn you the first time: click **More info**, then **Run anyway**. A portable zip is available as well. To uninstall, use Windows Settings > Apps. The interface is in Turkish by default; switch it under Ayarlar > Dil / Language.
 
 This is an unofficial fan project and is not affiliated with, endorsed or sponsored by Sony Interactive Entertainment. PlayStation and PS5 are trademarks of Sony Interactive Entertainment Inc. No Sony code, fonts, sounds or artwork are included; game covers in the screenshots belong to their owners and are not part of the repository or the installer. MIT License, Copyright (c) 2026 Kutay Kılıç.

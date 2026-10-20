@@ -2,7 +2,8 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('ps5', {
   init: () => ipcRenderer.invoke('init'),
-  launch: (id) => ipcRenderer.invoke('launch', id),
+  launch: (id, opts) => ipcRenderer.invoke('launch', id, opts || {}),
+  quit: (mode) => ipcRenderer.invoke('quit', mode),
   kill: () => ipcRenderer.invoke('kill'),
   pick: (kind, current) => ipcRenderer.invoke('pick', kind, current),
   saveGame: (draft) => ipcRenderer.invoke('game-save', draft),
@@ -16,5 +17,5 @@ contextBridge.exposeInMainWorld('ps5', {
   power: (cmd) => ipcRenderer.invoke('power', cmd),
   capture: (file) => ipcRenderer.invoke('capture', file),
   captureDone: () => ipcRenderer.send('capture-done'),
-  on: (ch, fn) => { const ok = ['game-started', 'game-exited', 'game-error', 'game-handoff', 'game-returning', 'game-resumed', 'show-home']; if (ok.includes(ch)) ipcRenderer.on(ch, (_e, d) => fn(d)); },
+  on: (ch, fn) => { const ok = ['game-started', 'game-exited', 'game-error', 'game-handoff', 'game-returning', 'game-resumed', 'show-home', 'game-paused', 'confirm-quit']; if (ok.includes(ch)) ipcRenderer.on(ch, (_e, d) => fn(d)); },
 });
