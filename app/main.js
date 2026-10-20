@@ -272,13 +272,18 @@ async function ensureLsProfile(g) {
   if (!(isWin || FAKE) || !g || !g.losslessScaling || !g.exe) return { ok: false, reason: 'off' };
   const xp = lsOps.settingsPath();
   let xml; try { xml = fs.readFileSync(xp, 'utf8'); } catch { return { ok: false, reason: 'no-settings' }; }
-  if (lossless.profileFor(xml, g.exe, g.title)) return { ok: true, existed: true };
+  const prof = lossless.profileFor(xml, g.exe, g.title);
+  // A profile the menu made earlier with a longer Auto Scale delay: shorten it to 1 s (the menu now
+  // waits for the game window itself, so LS does not have to wait on top).
+  const tune = prof && lossless.isMenuProfile(prof.title) && prof.autoScale && prof.autoScaleDelay > lossless.MENU_DELAY;
+  if (prof && !tune) return { ok: true, existed: true };
   const snap = await helper.snap(0, [lossless.EXE]);
-  if (snap && snap.pids && snap.pids.length) return { ok: false, reason: 'running' };
+  if (snap && snap.pids && snap.pids.length) return { ok: !!prof, existed: !!prof, reason: 'running' };
   const stamp = new Date().toISOString().replace(/[-:]/g, '').replace('T', '-').slice(0, 13);
   try {
     fs.copyFileSync(xp, `${xp}.bak-ps5menu-${stamp}`);
-    fs.writeFileSync(xp, lossless.addProfile(xml, { title: `${g.title} (${APP_NAME})`, exePath: g.exe, delay: 5 }), 'utf8');
+    if (tune) { fs.writeFileSync(xp, lossless.setAutoScaleDelay(xml, prof.title, lossless.MENU_DELAY), 'utf8'); return { ok: true, existed: true, tuned: true }; }
+    fs.writeFileSync(xp, lossless.addProfile(xml, { title: `${g.title} (${APP_NAME})`, exePath: g.exe, delay: lossless.MENU_DELAY }), 'utf8');
     return { ok: true, created: true };
   } catch (e) { return { ok: false, reason: e.message }; }
 }
@@ -332,34 +337,115 @@ async function keepGameFocused(s) {
   return a;
 }
 
-async function afterHandoffLossless(s) {
-  const ls = s.ls; if (!ls || !ls.mode) return;
-  const live = () => session === s && phase === 'playing';
-  // Profile: LS scales by itself after its Auto Scale delay. Watch that time: keep LS's window
-  // away and the game focused. Then check that scaling really started.
-  const wait = (ls.mode === 'profile' ? Number(ls.delay || 0) + 4 : Number(s.game.losslessScalingDelay || 3)) * 1000;
-  const end = Date.now() + wait;
-  while (live() && Date.now() < end) {
-    if (await hideLsWindow()) log('LS window minimized');
-    await keepGameFocused(s);
-    if (ls.mode === 'profile' && await lsScaling()) { log('LS auto scale is on'); break; }
-    await sleep(500);
+// ---------- black cover ----------
+// A plain black window per monitor, always on top, never focusable and click-through, so it never
+// takes input from the game. It hides every switch (menu <-> game, Lossless Scaling on/off) so that
+// no other window or the desktop is ever seen in between. A watchdog removes it in any case.
+let covers = []; let coverDog = null;
+function displaysFor(rects) {
+  const all = screen.getAllDisplays();
+  const rs = (rects || []).filter((r) => r && r.w > 0 && r.h > 0);
+  if (!rs.length) return all;
+  const hit = all.filter((d) => rs.some((r) => {
+    const q = isWin ? screen.screenToDipRect(null, { x: r.x, y: r.y, width: r.w, height: r.h }) : { x: r.x, y: r.y, width: r.w, height: r.h };
+    const b = d.bounds;
+    return q.x < b.x + b.width && q.x + q.width > b.x && q.y < b.y + b.height && q.y + q.height > b.y;
+  }));
+  return hit.length ? hit : all;
+}
+function armCoverDog(ms) { clearTimeout(coverDog); coverDog = setTimeout(() => { log('cover watchdog'); hideCover(150); }, ms); }
+async function showCover(rects = [], { fadeInMs = 0, watchdogMs = 6000 } = {}) {
+  if (!canTop()) return false;
+  armCoverDog(watchdogMs);
+  if (covers.length) { for (const c of covers) if (!c.isDestroyed()) { c.setOpacity(1); c.setAlwaysOnTop(true, 'screen-saver'); c.moveTop(); } return true; }
+  const list = displaysFor(rects).map((d) => {
+    const c = new BrowserWindow({
+      x: d.bounds.x, y: d.bounds.y, width: d.bounds.width, height: d.bounds.height, show: false, frame: false,
+      backgroundColor: '#000000', focusable: false, skipTaskbar: true, resizable: false, movable: false, minimizable: false,
+      enableLargerThanScreen: true, hasShadow: false, title: `${APP_NAME} cover`,
+      webPreferences: { sandbox: true, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false },
+    });
+    c.isCover = true;
+    c.setIgnoreMouseEvents(true);
+    c.setAlwaysOnTop(true, 'screen-saver');
+    return c;
+  });
+  covers = list;
+  await Promise.all(list.map((c) => new Promise((res) => { c.once('ready-to-show', res); setTimeout(res, 1500); c.loadURL('data:text/html,<html style="background:%23000;cursor:none"></html>').catch(res); })));
+  for (const c of list) {
+    if (c.isDestroyed()) continue;
+    if (fadeInMs) c.setOpacity(0);
+    c.showInactive(); c.setAlwaysOnTop(true, 'screen-saver'); c.moveTop();
   }
-  if (!live() || !ls.hotkey) return;
-  if (await lsScaling()) return;
-  // Not scaling. Press LS's hotkey (a global hotkey, it toggles scaling) only when nothing of LS is
-  // on screen, so a scaling window we failed to recognise is never switched off, and only when the
-  // game is in front and fills the screen.
+  if (fadeInMs) {
+    const steps = Math.max(1, Math.round(fadeInMs / 16));
+    for (let i = 1; i <= steps; i++) { for (const c of list) if (!c.isDestroyed()) c.setOpacity(i / steps); await sleep(16); }
+  }
+  await sleep(50);   // a few compositor frames: the black is on screen before anything moves behind it
+  log('cover up', list.length);
+  return true;
+}
+async function hideCover(fadeMs = 250) {
+  const list = covers; covers = []; clearTimeout(coverDog);
+  if (!list.length) return;
+  const steps = Math.max(1, Math.round(fadeMs / 16));
+  if (fadeMs) for (let i = steps - 1; i >= 0; i--) { for (const c of list) if (!c.isDestroyed()) c.setOpacity(i / steps); await sleep(16); }
+  for (const c of list) if (!c.isDestroyed()) c.destroy();
+  log('cover down');
+}
+const lsOutputRects = async () => { const snap = await helper.snap(0, [lossless.EXE]); return ((snap && snap.windows) || []).filter((x) => x.visible && !x.minimized && coversMonitor(x) && !isLsMain(x)); };
+
+// Lossless Scaling after the game is in front (launch and Devam Et). The game first gets a moment to
+// paint. At launch a short Auto Scale (the menu's own profiles use 1 s) is waited for; otherwise, and
+// always on Devam Et, LS's hotkey is pressed at once, but only when LS is not scaling already, so it
+// is never toggled off. If Auto Scale then switches it off again (double toggle), it is pressed once
+// more. Returns when LS's output is up or it gave up.
+async function engageLossless(s, why) {
+  const ls = s.ls; const live = () => session === s && phase === 'playing';
+  await sleep(400);
+  if (!ls || !ls.mode || !live()) return 'off';
+  const delay = ls.mode === 'profile' ? Number(ls.delay || 0) : 0;
+  const t0 = Date.now();
+  if (why === 'launch' && ls.mode === 'profile' && delay <= 2) {
+    while (live() && Date.now() - t0 < delay * 1000 + 900) {
+      if (await lsScaling()) { log('LS auto scale is on'); return 'auto'; }
+      await hideLsWindow(); await keepGameFocused(s); await sleep(120);
+    }
+  }
+  if (!live()) return 'off';
+  if (await lsScaling()) return 'already';
+  if (!ls.hotkey) return 'nohotkey';
+  if (!await pressLsHotkey(s)) return 'skipped';
+  for (let i = 0; i < 20 && live(); i++) { if (await lsScaling()) break; await sleep(100); }
+  if (ls.mode === 'profile') guardScaling(s, delay * 1000 + 2500);
+  return 'hotkey';
+}
+async function pressLsHotkey(s) {
+  // Only when nothing of LS is on screen (a scaling window we failed to recognise is never switched
+  // off) and the game is in front and fills the screen.
   await hideLsWindow();
   const snap = await helper.snap(0, [lossless.EXE]);
   const lsVisible = ((snap && snap.windows) || []).some((x) => x.visible && !x.minimized && x.w > 200 && x.h > 150);
   const a = await keepGameFocused(s);
   const g = a && a.alive ? await helper.alive(s.hwnd) : null;
-  if (!live() || lsVisible || !g || !g.isfg || !coversMonitor(g.win)) { log('LS hotkey skipped', { lsVisible, fg: g && g.isfg, full: g && coversMonitor(g.win) }); return; }
-  await helper.keys(ls.hotkey.mods, ls.hotkey.vk);
-  log('LS hotkey sent', ls.hotkey.label);
-  await sleep(700);
-  await keepGameFocused(s);
+  if (lsVisible || !g || !g.isfg || !coversMonitor(g.win)) { log('LS hotkey skipped', { lsVisible, fg: g && g.isfg, full: g && coversMonitor(g.win) }); return false; }
+  await helper.keys(s.ls.hotkey.mods, s.ls.hotkey.vk);
+  log('LS hotkey sent', s.ls.hotkey.label);
+  return true;
+}
+async function guardScaling(s, ms) {
+  const live = () => session === s && phase === 'playing';
+  const end = Date.now() + ms; let was = await lsScaling();
+  while (live() && Date.now() < end) {
+    await sleep(150);
+    const now = await lsScaling();
+    if (was && !now && live()) {
+      const a = await helper.alive(s.hwnd);
+      if (a && a.alive && a.isfg) { log('LS went off right after our hotkey (Auto Scale toggled it), pressing once more'); await helper.keys(s.ls.hotkey.mods, s.ls.hotkey.vk); }
+      return;
+    }
+    was = now;
+  }
 }
 
 async function handoff(s) {
@@ -377,17 +463,22 @@ async function handoff(s) {
   const w = r.win;
   s.hwnd = w.hwnd; s.fullscreen = r.fullscreen;
   if (state.windowModes[s.game.id] !== (r.fullscreen ? 'fullscreen' : 'window')) { state.windowModes[s.game.id] = r.fullscreen ? 'fullscreen' : 'window'; writeJson(FILES.state, state); }
-  // The game goes to the front while the launch screen still covers it, then the screen fades away.
-  await helper.foreground(w.hwnd);
+  // The menu fades to black (a cover over everything), the menu window goes, the game comes to the
+  // front behind the cover and paints; with Lossless Scaling the cover stays until LS's output is
+  // up. Then the cover fades out (250 ms). Without a cover (windowed mode) the old fade is used.
   send('game-handoff', { id: s.game.id, fullscreen: r.fullscreen });
-  await fadeWindow(1, 0, 260);
-  if (stop()) { if (win) win.setOpacity(1); return; }
+  const covered = await showCover([w], { fadeInMs: 200, watchdogMs: 9000 });
+  if (!covered) { await helper.foreground(w.hwnd); await fadeWindow(1, 0, 260); }
+  if (stop()) { if (win) win.setOpacity(1); hideCover(0); return; }
   phase = 'playing';
   closeMenuForGame();
+  await helper.foreground(w.hwnd);
   await keepGameFocused(s);
   armHome(s);
-  afterHandoffLossless(s);
   watchPlaying(s);
+  const how = await engageLossless(s, 'launch');
+  log('launch LS', how);
+  await hideCover(250);
 }
 
 async function watchPlaying(s) {
@@ -460,9 +551,11 @@ async function goHome(s) {
   phase = 'pausing';
   disarmHome();
   try {
-    s.lsWasOn = await stopLossless(s);
     const a = await helper.alive(s.hwnd);
     if (a && a.win) s.rect = a.win;
+    // Black first, on every monitor the game or LS's output is on, before anything changes.
+    await showCover([s.rect, ...(await lsOutputRects())], { watchdogMs: 8000 });
+    s.lsWasOn = await stopLossless(s);
     openMenu('home');
     send('show-home', { id: s.game.id, paused: true, suspended: homeflow.suspendWanted(s.game) });
     const w = win;
@@ -480,17 +573,19 @@ async function goHome(s) {
       log('paused', pids, r);
     }
     if (session === s) { phase = 'paused'; send('game-paused', { id: s.game.id, suspended: !!s.suspended }); }
-  } finally { s.busy = false; }
+  } finally { s.busy = false; hideCover(0); }
 }
 
 async function resumeGame() {
   const s = session; if (!s || s.busy) return;
   if (!s.hwnd) { phase = 'launching'; send('game-returning', { id: s.game.id }); pinTop(true); handoff(s); return; }
   s.busy = true;
+  let covered = false;
   try {
     phase = 'resuming';
     send('game-resumed', { id: s.game.id });
-    await sleep(60);
+    // The menu fades to black, the cover takes over; the game comes back behind it.
+    covered = await showCover([s.rect], { fadeInMs: 160, watchdogMs: 8000 });
     if (s.suspended) { await helper.resume(s.suspended); s.suspended = null; }
     await helper.restore(s.hwnd);
     let a = null;
@@ -499,16 +594,18 @@ async function resumeGame() {
     if (fix) { await helper.place(s.hwnd, fix); log('window put back', fix); }
     await helper.foreground(s.hwnd);
     phase = 'playing';
-    await fadeWindow(1, 0, 200);
+    if (!covered) await fadeWindow(1, 0, 200);
     if (phase === 'playing' && session === s) closeMenuForGame();
     else if (win) win.setOpacity(1);
   } finally { s.busy = false; }
-  if (session !== s || phase !== 'playing') return;
+  if (session !== s || phase !== 'playing') { hideCover(0); return; }
   await keepGameFocused(s);
   armHome(s);
-  // Lossless Scaling again, the same way as at the start (auto scale, else its hotkey once).
-  if (s.ls && s.ls.mode) afterHandoffLossless(s);
-  else if (s.lsWasOn) { s.ls = { mode: 'hotkey', hotkey: lossless.hotkey(readLsXml()) }; afterHandoffLossless(s); }
+  // Lossless Scaling again at once (hotkey, only if it is not scaling), under the cover.
+  if ((!s.ls || !s.ls.mode) && s.lsWasOn) s.ls = { mode: 'hotkey', hotkey: lossless.hotkey(readLsXml()) };
+  const how = await engageLossless(s, 'resume');
+  log('resume LS', how);
+  await hideCover(250);
 }
 
 // Close the running game: resume, WM_CLOSE, ~5 s, then end it. quiet: the menu is already up and

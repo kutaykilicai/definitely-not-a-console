@@ -91,6 +91,8 @@ Oyundayken Esc'ye ya da kumandadaki Xbox düğmesine bir saniye kadar basılı t
 
 **Devam Et**'e bastığında oyun kaldığı yerden sürer, tam ekran olarak öne gelir, menü kapanır ve oyunda Lossless Scaling açıksa yeniden başlatılır. Menüdeyken başka bir oyun seçersen "… kapatılacak" uyarısı çıkar; onaylarsan açık oyun kendi kapatma isteğiyle kapatılır, beş saniye içinde kapanmazsa sonlandırılır ve yeni oyun açılır. Kaydetmediğin ilerleme bu yüzden gider, önce oyunun içinde kaydetmeyi unutma.
 
+Geçişler sırasında ekran kısa bir süre siyaha kapanır: Esc'ye ya da Xbox düğmesine basılı tuttuğunda oyun küçültülmeden ve Lossless Scaling durdurulmadan önce, oyunu başlattığında ve Devam Et'e bastığında ise oyun tam ekran çizilene ve Lossless Scaling devreye girene kadar. Böylece arada masaüstü ya da başka bir pencere görünmez. Bu siyah perde tıklamaları ve tuşları almaz, en geç birkaç saniye içinde kendiliğinden kalkar. Menünün Lossless Scaling için açtığı profillerde Auto Scale gecikmesi 1 saniyedir; eski sürümün açtığı 5 saniyelik profiller, Lossless Scaling kapalıyken oyun ilk başlatıldığında 1 saniyeye indirilir (Settings.xml'in yedeği yanına `.bak-ps5menu-…` adıyla alınır).
+
 Oyun açıkken menüyü Alt+F4 ile kapatırsan menü önce sorar: **İkisini de kapat** (varsayılan), **Yalnızca menüyü kapat** ya da **İptal**. Yalnızca menüyü kapatırsan oyun öne gelir ve kendi başına sürer. Menü bundan sonra kendiliğinden yeniden açılmaz.
 
 Ayarlar ekranında Esc ve Xbox düğmesi için ayrı ayrı aç/kapat ve basılı tutma süresi (0,6 / 1 / 1,5 / 2 sn) seçilebilir. Xbox düğmesine basınca Windows'ta Game Bar açılıyorsa onu Windows Ayarlar > Oyun > Game Bar bölümünden kapatabilir ya da Görünüm + Menü'yü birlikte basılı tutabilirsin. Bazı emülatörler duraklatılmayı sevmeyebilir; öyle bir oyunda **Oyunu Düzenle** ekranındaki **Menüdeyken oyunu duraklat** satırını kapat. O zaman oyun menü açıkken simge durumunda çalışmaya devam eder.
@@ -124,7 +126,7 @@ Menü, Windows'un Xbox kumandası desteğini kullanır. Kumanda başka bir oyund
 
 ## Geliştirme
 
-Uygulama Electron ile yazıldı. Oyun pencerelerini izleyen küçük yardımcı program `native/ps5winhelper.c` içinde, mingw ile derlenir. Testler `node test/unit.test.js`, `node test/winwatch.test.js` ve `node test/homeflow.test.js` ile çalışır; yardımcının basılı tutma mantığı `gcc native/hold_test.c` ile ayrıca denenir, kurulum dosyaları `node tools/build.js` ile `dist/` klasörüne çıkar.
+Uygulama Electron ile yazıldı. Oyun pencerelerini izleyen küçük yardımcı program `native/ps5winhelper.c` içinde, mingw ile derlenir. Testler `node test/unit.test.js`, `node test/winwatch.test.js` ve `node test/homeflow.test.js` ile çalışır; yardımcının basılı tutma mantığı `gcc native/hold_test.c` ile ayrıca denenir, geçişlerde ekrana başka bir pencere sızmadığı Linux üzerinde gerçek pencerelerle kaydedilip kare kare `tools/frame_test.sh` ile denetlenir (Xvfb, ffmpeg, ffplay, xdotool gerekir), kurulum dosyaları `node tools/build.js` ile `dist/` klasörüne çıkar.
 
 ```
 cd app && npm install && npx electron . --windowed

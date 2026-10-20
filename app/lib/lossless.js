@@ -93,6 +93,20 @@ function addProfile(xml, { title, exePath, delay = 5, template = null }) {
   return xml.slice(0, at) + '\n' + body + xml.slice(at);
 }
 
+// Profiles this menu made itself ("<game> (PS5 Menu)", "<game> (Definitely Not PS5 Menu)").
+const isMenuProfile = (title) => /\((Definitely Not )?PS5 Menu\)$/.test(title || '');
+
+// Set Auto Scale delay of one profile (by title). Pure string edit; everything else stays.
+function setAutoScaleDelay(xml, title, delay) {
+  let done = false;
+  const out = xml.replace(/<Profile>[\s\S]*?<\/Profile>/g, (b) => {
+    if (done || unxml(tag(b, 'Title')) !== title) return b;
+    done = true;
+    return /<AutoScaleDelay>/.test(b) ? b.replace(/<AutoScaleDelay>[\s\S]*?<\/AutoScaleDelay>/, `<AutoScaleDelay>${delay}</AutoScaleDelay>`) : b;
+  });
+  return done ? out : xml;
+}
+
 // Start LS minimized without taking focus. `start /min` passes SW_SHOWMINNOACTIVE to the new process.
 function startMinimized(exe) {
   return new Promise((resolve) => {
@@ -105,4 +119,4 @@ function startMinimized(exe) {
   });
 }
 
-module.exports = { findExe, settingsPath, parseProfiles, filterMatches, profileFor, hotkey, addProfile, startMinimized, steamLibraries, EXE };
+module.exports = { findExe, settingsPath, parseProfiles, filterMatches, profileFor, hotkey, addProfile, setAutoScaleDelay, isMenuProfile, startMinimized, steamLibraries, EXE, MENU_DELAY: 1 };

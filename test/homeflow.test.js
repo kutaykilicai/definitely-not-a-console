@@ -72,6 +72,14 @@ const ok = async (name, fn) => { await fn(); n++; console.log('ok', name); };
     assert.equal(res.how, 'stuck'); assert.deepEqual(res.pids, [10, 11]);
   });
 
+  await ok('LS: the menu shortens only its own profiles\' Auto Scale delay', () => {
+    const L = require('../app/lib/lossless.js');
+    const x = '<GameProfiles><Profile><Title>Varsayılan</Title><AutoScaleDelay>0</AutoScaleDelay></Profile><Profile><Title>inFAMOUS (PS5 Menu)</Title><AutoScale>true</AutoScale><AutoScaleDelay>5</AutoScaleDelay></Profile></GameProfiles>';
+    const y = L.setAutoScaleDelay(x, 'inFAMOUS (PS5 Menu)', L.MENU_DELAY);
+    assert.equal(L.parseProfiles(y)[1].autoScaleDelay, 1); assert.equal(L.parseProfiles(y)[0].autoScaleDelay, 0);
+    assert.equal(L.setAutoScaleDelay(x, 'yok', 1), x);
+    assert.ok(L.isMenuProfile('inFAMOUS (PS5 Menu)') && L.isMenuProfile('X (Definitely Not PS5 Menu)') && !L.isMenuProfile('Varsayılan'));
+  });
   await ok('helper protocol: event lines go to onEvent, replies stay in order', async () => {
     const { WinHelper } = require('../app/lib/winwatch.js');
     const { PassThrough } = require('stream'); const EventEmitter = require('events');

@@ -21,6 +21,7 @@ pkg/
 native/*.exe
 tools/*.py
 !tools/make_demo_art.py
+!tools/frame_check.py
 tools/render.sh
 tools/render_all.sh
 test/e2e-motion.js

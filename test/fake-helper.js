@@ -12,6 +12,9 @@ const F = {
   ls: null, lsRunning: false, lsMain: null, lsOut: false, fgSince: 0, delay: 2,
 };
 const ev = (e) => { F.events.push([Date.now(), e]); };
+const V = process.env.FAKE_VISUAL ? require('./fake-visual') : null;
+F.visual = V;
+const setLsOut = (on) => { if (F.lsOut !== on) { F.lsOut = on; if (V) V.lsOut(on); } };
 function games() {
   let out = ''; try { out = execFileSync('ps', ['-eo', 'pid=,args='], { encoding: 'utf8' }); } catch { return []; }
   return out.split('\n').filter((l) => /dummy-game\.sh/.test(l) && !/\bps\b/.test(l)).map((l) => parseInt(l.trim(), 10)).filter(Boolean);
@@ -29,14 +32,15 @@ F.suspend = async (pids) => { let n = 0; for (const p of pids) if (!F.stopped.ha
 F.resume = async (pids) => { const list = pids === 'all' ? [...F.stopped] : pids; for (const p of list) { sig(p, 'SIGCONT'); F.stopped.delete(p); } ev('resume'); return { ok: true, resumed: list.length }; };
 F.term = async (pids) => { for (const p of pids) { sig(p, 'SIGCONT'); sig(p, 'SIGKILL'); F.stopped.delete(p); } ev('term'); return { ok: true, ended: pids.length }; };
 F.closeWindow = async (h) => { ev('close'); if (!F.ignoreClose) sig(h, 'SIGTERM'); return { ok: true }; };
-F.restore = async (h) => { F.min.delete(h); ev('restore'); return { ok: true }; };
+F.restore = async (h) => { F.min.delete(h); ev('restore'); if (V) V.restore(h); return { ok: true }; };
 F.place = async () => ({ ok: true });
 function tick() {
   // LS auto scale: the game has been in front for `delay` seconds.
   const g = games();
   // (once per activation of the game window, like LS: switching it off by hotkey keeps it off)
-  if (F.lsRunning && F.mode === 'auto' && !F.lsOut && g.includes(F.fg) && F.fgSince && F.autoAt !== F.fgSince && Date.now() - F.fgSince >= F.delay * 1000) { F.lsOut = true; F.autoAt = F.fgSince; ev('ls-autoscale'); }
-  if (F.lsOut && !g.length) F.lsOut = false;
+  // (its timer runs once per activation; if LS is already scaling by then, nothing happens)
+  if (F.lsRunning && F.mode === 'auto' && g.includes(F.fg) && F.fgSince && F.autoAt !== F.fgSince && Date.now() - F.fgSince >= F.delay * 1000) { F.autoAt = F.fgSince; if (!F.lsOut) { setLsOut(true); ev('ls-autoscale'); } }
+  if (F.lsOut && !g.length) setLsOut(false);
 }
 setInterval(tick, 100).unref();
 function setFg(h) { if (F.fg !== h) { F.fg = h; F.fgSince = Date.now(); } }
@@ -58,18 +62,18 @@ F.alive = async (h) => {
   const ok = games().includes(h);
   return { alive: ok, minimized: ok && F.min.has(h), isfg: ok && F.fg === h, win: ok ? gameWin(h) : null };
 };
-F.foreground = async (h) => { ev(`fg ${h === LS_MAIN ? 'ls' : 'game'}`); setFg(h); return { ok: true }; };
+F.foreground = async (h) => { ev(`fg ${h === LS_MAIN ? 'ls' : 'game'}`); setFg(h); if (V && h !== LS_MAIN) V.raise(h); return { ok: true }; };
 F.below = async () => ({ ok: true });
 F.minimize = async (h) => {
   if (h === LS_MAIN && F.lsMain) { F.lsMain = 'min'; ev('ls-minimized'); if (F.fg === LS_MAIN) F.fg = 0; }
-  else if (games().includes(h)) { F.min.add(h); ev('game-minimized'); if (F.fg === h) F.fg = 0; }
+  else if (games().includes(h)) { F.min.add(h); ev('game-minimized'); if (F.fg === h) F.fg = 0; if (V) V.minimize(h); }
   return { ok: true };
 };
-F.keys = async (mods, vk) => { ev(`keys ${mods}+${vk}`); if (F.lsRunning && !F.lsOut) { F.lsOut = true; ev('ls-scale-by-hotkey'); } else if (F.lsOut) { F.lsOut = false; ev('ls-scale-OFF-by-hotkey'); } return { ok: true }; };
+F.keys = async (mods, vk) => { ev(`keys ${mods}+${vk}`); if (F.lsRunning && !F.lsOut) { setLsOut(true); ev('ls-scale-by-hotkey'); } else if (F.lsOut) { setLsOut(false); ev('ls-scale-OFF-by-hotkey'); } return { ok: true }; };
 F.close = () => {};
 // LS process + Settings.xml
 const XML = path.join(os.tmpdir(), `fake-ls-${process.pid}.xml`);
-F.writeSettings = (gameExe, autoScale = true) => fs.writeFileSync(XML, `<?xml version="1.0" encoding="utf-8"?>
+F.writeSettings = (gameExe, autoScale = true, o = {}) => { if (o.delay != null) F.delay = o.delay; return fs.writeFileSync(XML, `<?xml version="1.0" encoding="utf-8"?>
 <Settings>
   <Hotkey>S</Hotkey>
   <HotkeyModifierKeys>Alt Control</HotkeyModifierKeys>
@@ -80,22 +84,23 @@ F.writeSettings = (gameExe, autoScale = true) => fs.writeFileSync(XML, `<?xml ve
       <AutoScaleDelay>0</AutoScaleDelay>
     </Profile>
     <Profile>
-      <Title>Örnek Oyun (test)</Title>
+      <Title>${o.title || 'Örnek Oyun (test)'}</Title>
       <Path>${gameExe}</Path>
       <AutoScale>${autoScale}</AutoScale>
-      <AutoScaleDelay>${F.delay}</AutoScaleDelay>
+      <AutoScaleDelay>${o.fileDelay != null ? o.fileDelay : F.delay}</AutoScaleDelay>
     </Profile>
   </GameProfiles>
 </Settings>
-`);
+`); };
 F.ls = {
   findExe: () => '/fake/LosslessScaling.exe',
   settingsPath: () => XML,
   startMinimized: async () => {
     ev('ls-start'); F.lsRunning = true;
+    if (V) await V.startLs();
     // Like LS with WindowMaximized=true: its window shows up maximized and takes the focus.
     setTimeout(() => { F.lsMain = 'max'; setFg(LS_MAIN); ev('ls-window-shown'); }, 800);
   },
 };
-F.reset = (mode) => { F.mode = mode; F.lsRunning = false; F.lsMain = null; F.lsOut = false; F.events = []; F.min.clear(); F.ignoreClose = false; };
+F.reset = (mode) => { F.mode = mode; F.lsRunning = false; F.lsMain = null; setLsOut(false); F.events = []; F.min.clear(); F.ignoreClose = false; };
 module.exports = F;
