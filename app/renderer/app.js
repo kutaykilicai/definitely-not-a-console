@@ -579,7 +579,15 @@
   function launchProgress(d) {
     const el = $('#launch'); const p = el.querySelector('.prog');
     if (!d || !el.classList.contains('on')) return;
+    const warn = { stalled: 'loadStalled', timeout: 'loadStalled', due: 'loadStalled', failed: 'loadStalled', hung: 'loadHung' }[d.state];
+    if (warn) {
+      if (!el.classList.contains('prog')) return;
+      p.classList.remove('indet'); p.classList.add('warn');
+      p.querySelector('.lb').textContent = t(warn);
+      return;
+    }
     if (d.state !== 'run' && d.state !== 'ready') { el.classList.remove('prog'); return; }
+    p.classList.remove('warn');
     const g = data.games.find((x) => x.id === d.id) || (data.allGames || []).find((x) => x.id === d.id);
     if (!el.classList.contains('prog')) {
       const src = g && g.art && (g.art.icon || g.art.cover);

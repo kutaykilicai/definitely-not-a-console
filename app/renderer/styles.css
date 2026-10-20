@@ -223,6 +223,7 @@ body.nocursor, body.nocursor * { cursor: none !important; }
 #launch .prog.indet .bar i { width: 28%; transition: none; animation: indet 1.4s var(--ease-out) infinite; }
 @keyframes indet { from { left: -28%; } to { left: 100%; } }
 #launch .prog .lb { font-size: 17px; color: rgba(255,255,255,0.72); font-variant-numeric: tabular-nums; }
+#launch .prog.warn .lb { color: #ffd479; }
 
 /* game manager */
 .tile.gen .exeic { position: absolute; left: 50%; top: 40%; width: 56px; height: 56px; transform: translate(-50%, -50%); image-rendering: auto; filter: drop-shadow(0 4px 10px rgba(0,0,0,0.45)); }

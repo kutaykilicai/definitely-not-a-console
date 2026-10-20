@@ -65,12 +65,53 @@ ok('watcher: estimate from the cache size, counter lines, no log, failure, time 
   fs.appendFileSync(log, '[exit code 3 = 0x3]\n'); now.t += 10; assert.equal(w.poll().state, 'failed');
   const c2 = { ...cfg, log: path.join(tmp, 'c.log'), counter: /(\d+) \/ (\d+)/gm, ready: null, maxMs: 1000 };
   fs.writeFileSync(c2.log, 'pipelines 50 / 200\n');
-  const w2 = new L.Watcher(c2, { t0: now.t, now }); v = w2.poll(); assert.equal(v.pct, 25); assert.equal(v.total, 200);
+  now.t = Date.now(); const w2 = new L.Watcher(c2, { t0: now.t, now }); v = w2.poll(); assert.equal(v.pct, 25); assert.equal(v.total, 200);
   now.t += 2000; assert.equal(w2.poll().state, 'timeout');
-  const w3 = new L.Watcher({ ...cfg, log: path.join(tmp, 'none.log'), noLogMs: 1000 }, { t0: now.t, now });
+  now.t = Date.now(); const w3 = new L.Watcher({ ...cfg, log: path.join(tmp, 'none.log'), noLogMs: 1000 }, { t0: now.t, now });
   assert.equal(w3.poll().state, 'nolog'); now.t += 1500; assert.equal(w3.poll().state, 'gone');
-  const w4 = new L.Watcher({ ...cfg, log: path.join(tmp, 'q.log'), percent: /(\d+)%/gm, ready: null }, { t0: Date.now(), now });
+  now.t = Date.now(); const w4 = new L.Watcher({ ...cfg, log: path.join(tmp, 'q.log'), percent: /(\d+)%/gm, ready: null }, { t0: Date.now(), now });
   fs.writeFileSync(path.join(tmp, 'q.log'), '99%\n100%\n'); assert.equal(w4.poll().state, 'ready');
+});
+
+ok('shadPS4 inFAMOUS: found on its own, its log lines are read', () => {
+  const g = { id: 'i', title: 'inFAMOUS Second Son', exe: path.join(tmp, 'inFAMOUS-AxylPup-v1.0', 'shadPS4.exe'), args: '-g "F:\\PS4 Oyunlar\\inFAMOUS-CUSA00004-v1.07\\CUSA00004\\eboot.bin"', losslessScaling: true };
+  const c = L.resolve(g);
+  assert.equal(c.preset, 'shadps4');
+  assert.equal(c.logs[0], path.join(tmp, 'inFAMOUS-AxylPup-v1.0', 'user', 'log', 'shad_log.txt'));
+  assert.ok(/shadPS4[\\/]log[\\/]shad_log\.txt$/.test(c.logs[1]));
+  assert.equal(L.resolve({ ...g, args: '-g C:\\games\\CUSA12345\\eboot.bin', title: 'Other' , exe: 'C:\\emu\\shadPS4.exe' }), null);   // other shadPS4 games: only when chosen
+  assert.ok(c.ready.test('[Render.Vulkan] <Info> vk_pipeline_serialization.cpp:240 WarmUp: Preloaded 2412 pipelines in 18093 ms'));
+  assert.ok(c.ready.test("[Render.Vulkan] <Warning> Pipeline cache isn't compatible with current system. Ignoring the cache"));
+  const one = (re, line) => { re.lastIndex = 0; const m = re.exec(line); return m ? m.slice(1).join('/') : null; };
+  assert.equal(one(c.percent, 'Compiling shaders: 45%'), '45');
+  assert.equal(one(c.percent, 'Loading pipeline cache 12.5 %'), '12');
+  assert.equal(one(c.percent, 'GPU usage 45%'), null);
+  assert.equal(one(c.counter, '[Render] Building pipelines 120 / 900'), '120/900');
+});
+
+ok('stall rules: quiet log after the estimate ran out; numbers that stopped; grace; adaptive limit', () => {
+  const now = fakeClock(Date.now()); const lg = path.join(tmp, 's.log');
+  fs.writeFileSync(lg, 'start\n');
+  const base = { log: lg, logs: [lg], ready: /ready/m, fail: null, percent: null, counter: null, count: null, msPerItem: 0, label: 'shaders', maxMs: 180e3, fixedMax: false, stallMs: 20e3, graceMs: 0, noLogMs: 25e3, settleMs: 0 };
+  const w = new L.Watcher(base, { t0: now.t, now, learned: { ms: 46000 } });
+  assert.equal(w.maxMs, 122000);                       // 2 x 46 s + 30 s
+  w.poll(); now.t += 40e3; assert.equal(w.poll().state, 'run');   // quiet, but not due yet (no log lines while rebuilding is normal)
+  now.t += 10e3; assert.equal(w.poll().state, 'run');  // 50 s: past the estimate, a slower run is fine
+  assert.equal(w.view().pct >= 97, true);
+  now.t += 17e3; assert.equal(w.poll().state, 'stalled');   // 67 s: 21 s past the estimate with a quiet log
+
+  now.t = Date.now(); const w2 = new L.Watcher(base, { t0: now.t, now, learned: { ms: 46000 } });
+  fs.appendFileSync(lg, 'x\n'); w2.poll(); now.t += 50e3; fs.appendFileSync(lg, 'y\n'); w2.poll();   // a line after the estimate ran out
+  now.t += 19e3; assert.equal(w2.poll().state, 'run'); now.t += 2e3; assert.equal(w2.poll().state, 'stalled');
+  now.t = Date.now(); const w3 = new L.Watcher({ ...base, percent: /(\d+)%/gm }, { t0: now.t, now });
+  fs.appendFileSync(lg, '50%\n'); w3.poll(); now.t += 15e3; fs.appendFileSync(lg, 'other\n'); w3.poll();
+  now.t += 4e3; assert.equal(w3.poll().state, 'run');       // the log still grew 4 s ago
+  now.t += 17e3; assert.equal(w3.poll().state, 'stalled');  // 50 % for 36 s and 21 s without a line
+  now.t = Date.now(); const w4 = new L.Watcher({ ...base, graceMs: 5000 }, { t0: now.t, now, learned: { ms: 10000 } });
+  for (let i = 0; i < 16; i++) { fs.appendFileSync(lg, 'busy\n'); now.t += 1000; w4.poll(); }
+  assert.equal(w4.view().state, 'due');                // the log keeps growing, no ready line: shown after expected + 5 s
+  now.t = Date.now(); const w5 = new L.Watcher(base, { t0: now.t, now });
+  assert.equal(w5.maxMs, 180000); w5.abort('hung'); assert.equal(w5.poll().state, 'hung');
 });
 
 fs.rmSync(tmp, { recursive: true, force: true });

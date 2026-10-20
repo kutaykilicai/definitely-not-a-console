@@ -493,25 +493,44 @@ function trackLoad(s) {
   if (!cfg) return;
   const id = s.game.id;
   const w = new loadprogress.Watcher(cfg, { t0: s.t0, learned: state.loadStats[id] || null });
-  log('load progress', cfg.preset || 'custom', cfg.log, `items ${w.items}`, `expected ${w.expected ? Math.round(w.expected) + ' ms' : '-'}`);
+  log('load progress', cfg.preset || 'custom', cfg.log, `items ${w.items}`, `expected ${w.expected ? Math.round(w.expected) + ' ms' : '-'}`, `limit ${Math.round(w.maxMs / 1000)} s`);
   const live = () => session === s && runner.running && (phase === 'launching' || phase === 'overlay');
   s.load = { cfg, w, done: (async () => {
-    let last = '';
+    let last = ''; let checked = 0; let hungSince = 0; let goneCount = 0;
     while (live()) {
       let v; try { v = w.poll(); } catch (e) { log('load progress', e.message); break; }
+      // About once a second: is the game still there, and does its window still respond?
+      if (Date.now() - checked > 1000 && !w.finished()) {
+        checked = Date.now();
+        const snap = await helper.snap(s.pid, s.watchNames).catch(() => null);
+        if (snap && Array.isArray(snap.pids) && snap.pids.length === 0) { if (++goneCount >= 3) w.abort('exited'); } else goneCount = 0;
+        const mw = snap && pickMain(snap);
+        const a = mw ? await helper.alive(mw.hwnd).catch(() => null) : null;
+        if (a && a.alive && a.hung) { hungSince ||= Date.now(); if (Date.now() - hungSince >= HUNG_MS) w.abort('hung'); } else hungSince = 0;
+        v = w.view();
+      }
       const msg = JSON.stringify(v);
       if (msg !== last) { last = msg; send('launch-progress', { id, ...v }); }
       if (w.finished()) break;
       await sleep(200);
     }
     const v = w.view();
-    log('load progress end', v.state, w.measured() ? `${w.measured()} ms` : '');
+    log('load progress end', v.state, w.measured() ? `${w.measured()} ms` : '', `${Math.round((Date.now() - s.t0) / 1000)} s`);
     if (v.state === 'ready') {
       state.loadStats[id] = loadprogress.learn(state.loadStats[id], w.measured(), w.items); writeJson(FILES.state, state);
       await sleep(cfg.settleMs);
-    } else send('launch-progress', { id, state: v.state, pct: null });
+      return;
+    }
+    if (v.state === 'exited') { await sleep(1500); return; }   // the runner reports the exit
+    if (!live()) return;   // the game ended (the runner brings the menu back) or the launch was left
+    // Waiting any longer would not help: say why on the launch screen for a moment, then show the
+    // game as it is (holding Esc / the Xbox button brings the menu back, where it can be closed).
+    send('launch-progress', { id, ...v });
+    if (['stalled', 'hung', 'timeout', 'due', 'failed'].includes(v.state)) await sleep(LOAD_NOTICE_MS);
   })() };
 }
+const HUNG_MS = Number(process.env.PS5MENU_HUNG_MS) || 10e3;
+const LOAD_NOTICE_MS = Number(process.env.PS5MENU_LOAD_NOTICE_MS) || 2500;
 
 async function watchPlaying(s) {
   let misses = 0;

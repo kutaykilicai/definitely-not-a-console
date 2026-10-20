@@ -30,7 +30,7 @@ Resmi bir ürün değil, hayran işi bir projedir. Sony ile hiçbir bağı yoktu
 - Xbox kumandası ve klavye desteği.
 - Konsoldaki gibi oyun sırasında menüye dönüş: Esc'ye ya da Xbox düğmesine basılı tut, oyun duraklar, menüden **Devam Et** ile kaldığın yerden sürer. Başka bir oyun seçersen açık olan önce kapatılır.
 - İstersen oyun Lossless Scaling ile birlikte açılır ve ölçekleme kendiliğinden başlar.
-- Açılırken uzun süre shader hazırlayan oyunlarda (örneğin Shadow of the Colossus PC portu) yükleme ekranında ilerleme yüzdesi görünür.
+- Açılırken uzun süre shader hazırlayan oyunlarda (Shadow of the Colossus PC portu, shadPS4 ile inFAMOUS) yükleme ekranında ilerleme yüzdesi görünür.
 - Tek tıkla kurulum, yönetici izni istemez.
 
 ## Kurulum
@@ -102,13 +102,15 @@ Ayarlar ekranında Esc ve Xbox düğmesi için ayrı ayrı aç/kapat ve basılı
 
 Bazı oyunlar ve portlar ilk görüntüden önce uzun süre hazırlık yapar. Örneğin Shadow of the Colossus PC portu (AjncSystem/ShadowOfTheColossus-PC) her açılışta shader önbelleğini yeniden kurar ve bu sırada penceresi boş kalır. Portun kendi "Loading shaders… %" çubuğu bu aşamada çizilemez, çünkü önbellek görüntü katmanı hazırlanmadan önce okunur. Menü böyle bir oyunda yükleme ekranını açık tutar. Oyunun kapağını, adını ve **Shader'lar hazırlanıyor %NN** satırını gösterir, oyun hazır olunca her zamanki gibi oyuna geçer.
 
-Yüzde, oyunun yazdığı günlük dosyasından okunur. Oyun yüzde yazmıyorsa önbellekteki öğe sayısından ve önceki açılışların süresinden tahmin edilir. Tahmin, oyun "hazırım" demeden %100'e varmaz. Hiçbir bilgi yoksa çubuk yalnızca hareket eder. Shadow of the Colossus portu `SotC.exe --play` ile eklendiyse bu kendiliğinden çalışır. Başka bir oyun için `games.json` içinde o oyuna bir `loadProgress` alanı eklenebilir:
+Yüzde, oyunun yazdığı günlük dosyasından okunur. Oyun yüzde yazmıyorsa önbellekteki öğe sayısından ve önceki açılışların süresinden tahmin edilir. Tahmin, oyun "hazırım" demeden %100'e varmaz. Hiçbir bilgi yoksa çubuk yalnızca hareket eder. Shadow of the Colossus portu `SotC.exe --play` ile, inFAMOUS Second Son ya da First Light `shadPS4.exe` ile eklendiyse bu kendiliğinden çalışır. shadPS4'te günlük `user\log\shad_log.txt` (ya da `%APPDATA%\shadPS4\log`) dosyasından okunur. Yüzde ya da "yapılan / toplam" satırı varsa o kullanılır; yükleme "Preloaded N pipelines" satırıyla biter. Böyle bir satır gelmezse oyun, tahmini süre dolduktan beş saniye sonra, en geç 90 saniyede gösterilir. Lossless Scaling bu oyunlarda oyun gösterildikten sonra devreye girer. Başka bir oyun için `games.json` içinde o oyuna bir `loadProgress` alanı eklenebilir:
 
 ```json
 "loadProgress": { "log": "logs\\game.log", "percent": "Compiling shaders (\\d+)%", "ready": "Renderer ready" }
 ```
 
-`log` oyunun klasörüne göre ya da tam yol olarak verilir. `percent` yüzdeyi, `counter` "yapılan / toplam" sayılarını, `ready` yüklemenin bittiğini gösteren satırı yakalar. `count: { "dir": "...", "ext": ".key" }` önbellek dosyalarını sayar. Kapatmak için `"loadProgress": false` yazılır. Günlük dosyası 25 saniye içinde oluşmazsa menü beklemeyi bırakır, en uzun bekleme ise dört dakikadır.
+`log` oyunun klasörüne göre ya da tam yol olarak verilir. `percent` yüzdeyi, `counter` "yapılan / toplam" sayılarını, `ready` yüklemenin bittiğini gösteren satırı yakalar. `count: { "dir": "...", "ext": ".key" }` önbellek dosyalarını sayar. Kapatmak için `"loadProgress": false` yazılır. Günlük dosyası 25 saniye içinde oluşmazsa menü beklemeyi bırakır.
+
+Menü bir oyunu sonsuza kadar beklemez. Tahmini süre dolduktan sonra günlük 20 saniye boyunca hiç büyümezse ya da oyunun kendi yüzdesi o kadar süre ilerlemezse "Yükleme beklenenden uzun sürdü" yazar ve oyunu olduğu gibi gösterir. Oyunun penceresi 10 saniye yanıt vermezse "Oyun yanıt vermiyor" yazar ve yine oyunu gösterir. İki durumda da Esc'ye ya da Xbox düğmesine basılı tutarak menüye dönüp oyunu kapatabilirsin. Oyun yüklenirken kapanırsa menü ana ekrana döner. En uzun bekleme, beklenen sürenin iki katı artı 30 saniyedir (en az bir, en çok üç dakika).
 
 ## Lossless Scaling
 

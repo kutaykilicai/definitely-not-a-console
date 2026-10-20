@@ -371,8 +371,9 @@ int main(void) {
     else if (!strcmp(cmd, "alive")) {
       char *a = strtok_s(NULL, " ", &ctx); HWND h = a ? parse_h(a) : NULL; HWND fg = GetForegroundWindow();
       int al = h && IsWindow(h) && IsWindowVisible(h);
-      out("{\"ok\":true,\"alive\":%s,\"minimized\":%s,\"fg\":%llu,\"isfg\":%s", al ? "true" : "false",
-          (al && IsIconic(h)) ? "true" : "false", (unsigned long long)(ULONG_PTR)fg, fg == h ? "true" : "false");
+      out("{\"ok\":true,\"alive\":%s,\"minimized\":%s,\"hung\":%s,\"fg\":%llu,\"isfg\":%s", al ? "true" : "false",
+          (al && IsIconic(h)) ? "true" : "false", (al && IsHungAppWindow(h)) ? "true" : "false",
+          (unsigned long long)(ULONG_PTR)fg, fg == h ? "true" : "false");
       if (al) { out(",\"win\":"); win_json(h); }
       out("}");
     }

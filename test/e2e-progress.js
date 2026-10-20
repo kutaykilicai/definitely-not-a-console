@@ -47,7 +47,7 @@ module.exports = ({ app, getWin, FILES, readJson, getPhase }) => {
   async function percentCase() {
     F.reset('auto');
     const lf = `${D}/a/last_run.log`;
-    setGame('ornek-oyun', { args: `3 log=${lf} warm=4 mode=percent`, losslessScaling: undefined, loadProgress: { log: lf, ready: 'presenter ready', percent: 'shaders (\\d+)%' } });
+    setGame('ornek-oyun', { args: `${F.visual ? 6 : 3} log=${lf} warm=4 mode=percent`, losslessScaling: undefined, loadProgress: { log: lf, ready: 'presenter ready', percent: 'shaders (\\d+)%' } });
     mark('p_launch');
     const { seen } = await run('ornek-oyun', lf);
     mark('p_playing');
@@ -92,12 +92,63 @@ module.exports = ({ app, getWin, FILES, readJson, getPhase }) => {
     setGame('kiyi-kasabasi', { args: '2', loadProgress: undefined });
   }
 
+  // Loading that never ends: the log stops after one line. Expected 2 s (50 items x 40 ms), stall
+  // after 3 s without log growth: the warning shows, then the game is revealed.
+  async function stallCase() {
+    F.reset('auto');
+    const lf = `${D}/s/last_run.log`; const cache = `${D}/s/cache/X`;
+    fs.mkdirSync(cache, { recursive: true });
+    for (let i = 0; i < 50; i++) fs.writeFileSync(path.join(cache, `${i}.key`), '');
+    setGame('kiyi-kasabasi', { args: `12 log=${lf} mode=stall`, loadProgress: { log: lf, ready: 'presenter ready', count: { dir: `${D}/s/cache`, ext: '.key' }, msPerItem: 40, stallMs: 3000 } });
+    const st0 = readJson(FILES.state, {}); delete (st0.loadStats || {})['kiyi-kasabasi']; fs.writeFileSync(FILES.state, JSON.stringify(st0));
+    const { seen } = await run('kiyi-kasabasi', lf);
+    const warned = seen.find((x) => /beklenenden uzun/.test(x[4] || ''));
+    const playingAt = seen.find((x) => x[1] === 'playing');
+    check('stall: warning on the launch screen', !!warned, warned && `${warned[0]} ms: ${warned[4]}`);
+    check('stall: the game is revealed instead of waiting minutes', !!playingAt && playingAt[0] > 4000 && playingAt[0] < 12000, playingAt && `${playingAt[0]} ms`);
+    const pcts = seen.filter((x) => x[3]).map((x) => Number(x[3]));
+    check('stall: never 100 % for a game that never got ready', pcts.every((p) => p < 100), String(Math.max(0, ...pcts)));
+    await F.term((await F.snap(0, [])).pids); await waitExit();
+  }
+
+  // The game's window stops responding while it loads (fake helper: hung): warning, then revealed.
+  async function hungCase() {
+    F.reset('auto');
+    const lf = `${D}/h/last_run.log`;
+    setGame('kiyi-kasabasi', { args: `12 log=${lf} mode=stall`, loadProgress: { log: lf, ready: 'presenter ready', stallMs: 60000 } });
+    const p = run('kiyi-kasabasi', lf);
+    await waitFor(async () => (await F.snap(0, [])).pids.length > 0, 5000);
+    await sleep(1500);
+    const pid = (await F.snap(0, [])).pids[0]; F.hung.add(pid); const hungAt = Date.now();
+    const { seen, t0 } = await p;
+    const warned = seen.find((x) => /yanıt vermiyor/.test(x[4] || ''));
+    const playingAt = seen.find((x) => x[1] === 'playing');
+    check('hung: "not responding" on the launch screen', !!warned, warned && warned[4]);
+    check('hung: revealed a few seconds after it stopped responding', !!playingAt && t0 + playingAt[0] - hungAt < 9000, playingAt && `${t0 + playingAt[0] - hungAt} ms after`);
+    F.hung.clear(); await F.term((await F.snap(0, [])).pids); await waitExit();
+  }
+
+  // The game ends while it loads: back to the menu, no handoff.
+  async function exitCase() {
+    F.reset('auto');
+    const lf = `${D}/x/last_run.log`;
+    setGame('kiyi-kasabasi', { args: `12 log=${lf} warm=20 die=2`, loadProgress: { log: lf, ready: 'presenter ready' } });
+    await ready(); await sleep(500);
+    const t0 = Date.now(); const phases = [];
+    await pick('kiyi-kasabasi');
+    await waitFor(() => { phases.push(getPhase()); return Date.now() - t0 > 1500 && getPhase() === 'home'; }, 15000, 150);
+    const dt = Date.now() - t0;
+    check('exit while loading: back home, never handed over', getPhase() === 'home' && !phases.includes('playing') && dt < 8000, `${dt} ms`);
+    check('exit while loading: menu window there', await waitFor(() => !!getWin(), 3000));
+    setGame('kiyi-kasabasi', { args: '2', loadProgress: undefined });
+  }
+
   getWin().webContents.once('did-finish-load', async () => {
     try {
       fs.rmSync(D, { recursive: true, force: true });
       await sleep(1500);
       await percentCase();
-      if (!process.env.E2E_ONLY_PERCENT) { await estimateCase(); await noLogCase(); }
+      if (!process.env.E2E_ONLY_PERCENT) { await estimateCase(); await noLogCase(); await stallCase(); await hungCase(); await exitCase(); }
     } catch (e) { log('ERROR', e.stack); results.push(['exception', false]); save(); }
     const failed = results.filter((r) => !r[1]).length;
     log(`${results.length - failed}/${results.length} checks passed`);

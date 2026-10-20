@@ -20,7 +20,7 @@ function games() {
   return out.split('\n').filter((l) => /dummy-game\.sh/.test(l) && !/\bps\b/.test(l)).map((l) => parseInt(l.trim(), 10)).filter(Boolean);
 }
 // Home during a game: minimized windows, paused (SIGSTOP) processes, the hold-to-home watcher.
-F.min = new Set(); F.stopped = new Set(); F.watching = null; F.ignoreClose = false; F.onEvent = null;
+F.min = new Set(); F.stopped = new Set(); F.hung = new Set(); F.watching = null; F.ignoreClose = false; F.onEvent = null;
 const gameWin = (pid) => ({ hwnd: pid, pid, exe: 'dummy-game.sh', cls: 'Game', visible: true, minimized: F.min.has(pid), x: 0, y: 0, w: 1920, h: 1080, mon: MON });
 const sig = (pid, s) => { try { process.kill(pid, s); return true; } catch { return false; } };
 F.procState = (pid) => { try { return fs.readFileSync(`/proc/${pid}/stat`, 'utf8').split(') ')[1][0]; } catch { return null; } };
@@ -60,7 +60,7 @@ F.alive = async (h) => {
   tick();
   if (h === LS_MAIN) return { alive: !!F.lsMain, isfg: F.fg === LS_MAIN };
   const ok = games().includes(h);
-  return { alive: ok, minimized: ok && F.min.has(h), isfg: ok && F.fg === h, win: ok ? gameWin(h) : null };
+  return { alive: ok, minimized: ok && F.min.has(h), hung: ok && F.hung.has(h), isfg: ok && F.fg === h, win: ok ? gameWin(h) : null };
 };
 F.foreground = async (h) => { ev(`fg ${h === LS_MAIN ? 'ls' : 'game'}`); setFg(h); if (V && h !== LS_MAIN) V.raise(h); return { ok: true }; };
 F.below = async () => ({ ok: true });
@@ -102,5 +102,5 @@ F.ls = {
     setTimeout(() => { F.lsMain = 'max'; setFg(LS_MAIN); ev('ls-window-shown'); }, 800);
   },
 };
-F.reset = (mode) => { F.mode = mode; F.lsRunning = false; F.lsMain = null; setLsOut(false); F.events = []; F.min.clear(); F.ignoreClose = false; };
+F.reset = (mode) => { F.mode = mode; F.lsRunning = false; F.lsMain = null; setLsOut(false); F.events = []; F.min.clear(); F.hung.clear(); F.ignoreClose = false; };
 module.exports = F;
