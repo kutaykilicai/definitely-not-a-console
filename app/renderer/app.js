@@ -8,6 +8,8 @@
   const qs = new URLSearchParams(location.search);
   const forced = qs.get('state') ? JSON.parse(qs.get('state')) : {};
   const CAPTURE = qs.get('capture') === '1';
+  // Set when the menu window is made again after (or during) a game: no intro, straight to home.
+  const REOPEN = qs.get('reopen');
 
   let S = null;            // strings
   let data = null;         // init payload
@@ -718,7 +720,7 @@
     SOUND.loadUser(data.user.sounds);
     if (forced.tab) nav.tab = forced.tab;
     if (forced.scrim === false) stage.classList.add('noscrim');
-    refresh(data.state && data.state.focusId);
+    refresh((REOPEN && data.running) || (data.state && data.state.focusId));
     if (forced.row != null) { nav.row = forced.row; onFocusChanged(true); }
     if (forced.zone) { nav.zone = forced.zone; nav.action = forced.action || 0; nav.card = forced.card || 0; nav.top = forced.top || 0; applyZone(); }
     if (forced.overlay === 'menu') gameMenu(cur().g, forced.zone === 'row' ? 'row' : 'btn');
@@ -726,10 +728,11 @@
     if (forced.overlay === 'library') libraryOverlay();
     if (forced.inputMode) setMode(forced.inputMode);
     wireMouse(); clock(); setInterval(clock, 1000);
-    const intro = forced.intro || data.settings.intro;
+    const intro = REOPEN ? 'none' : (forced.intro || data.settings.intro);
     if (intro === 'press') startIntro();
     requestAnimationFrame(() => $('#blackout').classList.add('off'));
     if (intro === 'none' || CAPTURE) { const bo = $('#blackout'); bo.style.transition = 'none'; bo.classList.add('off'); }
+    if (REOPEN === 'returning') { $('#blackout').classList.remove('off'); launchScreen('busy'); }
     requestAnimationFrame(pollPads);
     if (CAPTURE) {
       await document.fonts.ready;

@@ -131,7 +131,7 @@ async function buildInit() {
     paths: { root: ROOT, data: DATA, games: FILES.games, userAssets: USER_ASSETS },
     running: runner.running ? runner.current.game.id : null,
     version: app.getVersion(),
-    lossless: { installed: !!(isWin && lossless.findExe(settings.losslessScalingExe)) || !!process.env.PS5MENU_FAKE_LS },
+    lossless: { installed: !!((isWin || FAKE) && lsOps.findExe(settings.losslessScalingExe)) || !!process.env.PS5MENU_FAKE_LS },
     migration,
   };
 }
@@ -139,7 +139,10 @@ async function buildInit() {
 const runner = new GameRunner();
 let win = null;
 
-function createWindow() {
+// The menu window exists only while the menu is on screen. During a game it is destroyed (nothing
+// left for Lossless Scaling or the compositor to pick up) and made again when the game ends or on
+// Ctrl+Alt+Home. reopen: null (app start) | 'exit' | 'returning' | 'home'.
+function createWindow(reopen = null) {
   const windowed = flag('windowed') || flag('screenshot') || settings.fullscreen === false;
   const size = (flagVal('size') || '1920x1080').split('x').map(Number);
   win = new BrowserWindow({
@@ -157,8 +160,18 @@ function createWindow() {
   const q = {};
   if (flagVal('state')) q.state = flagVal('state');
   if (flag('screenshot')) q.capture = '1';
+  if (reopen) q.reopen = reopen;
+  const me = win;
   win.loadFile(path.join(__dirname, 'renderer', 'index.html'), { query: q });
-  win.once('ready-to-show', () => { if (!flag('offscreen')) win.show(); pinTop(true); win.focus(); win.moveTop(); });
+  win.webContents.on('did-finish-load', () => { const p = pending.splice(0); for (const [ch, d] of p) if (!me.isDestroyed()) me.webContents.send(ch, d); });
+  win.once('ready-to-show', () => {
+    if (me.isDestroyed()) return;
+    if (reopen) me.setOpacity(0);
+    if (!flag('offscreen')) me.show();
+    pinTop(true); me.focus(); me.moveTop();
+    if (reopen) fadeWindow(0, 1, 320);
+  });
+  startBlocker();
   // While the menu is the active app it stays above always-on-top desktop widgets and the
   // taskbar. During a game it sits right below the game window as a black backdrop, so when the game
   // closes there is no desktop in between.
@@ -170,16 +183,43 @@ function createWindow() {
     if (input.type === 'keyDown' && input.key === 'F12' && input.control) win.webContents.toggleDevTools();
   });
   // Alt+F4 / closing the window quits the whole app (helper included). Nothing restarts it.
-  win.on('close', () => { quitting = true; helper.close(); });
-  win.on('closed', () => { win = null; app.quit(); });
+  // Only closeMenuForGame() closes it without quitting.
+  win.on('close', () => { if (me.forGame) return; quitting = true; helper.close(); });
+  win.on('closed', () => { if (win === me) win = null; if (!me.forGame) app.quit(); });
 }
+
+// Game is up: take the menu off the screen completely. The main process (and the window helper)
+// keeps running without any window and waits for the game to end.
+function closeMenuForGame() {
+  const w = win; if (!w || w.isDestroyed()) return;
+  w.forGame = true; win = null; pending.length = 0;
+  try { w.setAlwaysOnTop(false); } catch { /* */ }
+  w.destroy();
+  stopBlocker();
+}
+
+// Show the menu again (made fresh if it was closed for the game).
+function openMenu(reopen) {
+  if (quitting) return;
+  if (win && !win.isDestroyed()) { showLauncher(); return; }
+  createWindow(reopen);
+}
+
+let blockerId = null;
+function startBlocker() { if (blockerId === null) try { blockerId = powerSaveBlocker.start('prevent-display-sleep'); } catch { /* */ } }
+function stopBlocker() { if (blockerId !== null) { try { powerSaveBlocker.stop(blockerId); } catch { /* */ } blockerId = null; } }
 
 const canTop = () => !(flag('windowed') || flag('screenshot') || settings.fullscreen === false);
 function pinTop(on) {
   if (!win || !canTop()) return;
   win.setAlwaysOnTop(!!on, 'screen-saver');
 }
-const send = (ch, d) => { if (win && !win.isDestroyed()) win.webContents.send(ch, d); };
+// Messages for a window that is still loading wait until it has loaded.
+const pending = [];
+const send = (ch, d) => {
+  if (!win || win.isDestroyed()) return;
+  if (win.webContents.isLoading()) pending.push([ch, d]); else win.webContents.send(ch, d);
+};
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => { if (process.env.PS5MENU_DEBUG) console.log('[launch]', ...a); };
 
@@ -197,8 +237,10 @@ function showLauncher() {
 // phase: home (no game) | launching (launch screen up, waiting for the game window) | playing (menu
 // is a black backdrop below the game) | overlay (home shown over a running game) | returning (game
 // window closed, waiting for the process to end)
-const helper = new WinHelper(helperPath(__dirname));
-const seamless = () => !quitting && isWin && helper.available && canTop() && settings.seamless !== false;
+const helper = process.env.PS5MENU_FAKE_HELPER ? require(process.env.PS5MENU_FAKE_HELPER) : new WinHelper(helperPath(__dirname));
+const FAKE = !!process.env.PS5MENU_FAKE_HELPER;   // tests: a scripted helper stands in for the Win32 one
+const lsOps = (FAKE && helper.ls) || lossless;   // LS process/file operations (scripted in tests)
+const seamless = () => !quitting && (isWin || FAKE) && helper.available && canTop() && settings.seamless !== false;
 let phase = 'home';
 let quitting = false;
 let session = null;
@@ -212,8 +254,8 @@ async function fadeWindow(from, to, ms) {
 // Create an LS profile for this game (exe filter + Auto Scale) when the toggle is on and none
 // matches yet. Only while LS is closed (it rewrites Settings.xml on exit), after a backup.
 async function ensureLsProfile(g) {
-  if (!isWin || !g || !g.losslessScaling || !g.exe) return { ok: false, reason: 'off' };
-  const xp = lossless.settingsPath();
+  if (!(isWin || FAKE) || !g || !g.losslessScaling || !g.exe) return { ok: false, reason: 'off' };
+  const xp = lsOps.settingsPath();
   let xml; try { xml = fs.readFileSync(xp, 'utf8'); } catch { return { ok: false, reason: 'no-settings' }; }
   if (lossless.profileFor(xml, g.exe, g.title)) return { ok: true, existed: true };
   const snap = await helper.snap(0, [lossless.EXE]);
@@ -227,36 +269,82 @@ async function ensureLsProfile(g) {
 }
 
 async function prepareLossless(g) {
-  const exe = lossless.findExe(settings.losslessScalingExe);
+  const exe = lsOps.findExe(settings.losslessScalingExe);
   if (!exe) return { mode: null, error: 'Lossless Scaling bulunamadı' };
   await ensureLsProfile(g);
-  let xml = ''; try { xml = fs.readFileSync(lossless.settingsPath(), 'utf8'); } catch { /* */ }
+  let xml = ''; try { xml = fs.readFileSync(lsOps.settingsPath(), 'utf8'); } catch { /* */ }
   const prof = lossless.profileFor(xml, g.exe, g.title);
   const snap = await helper.snap(0, [lossless.EXE]);
   const running = !!(snap && snap.pids && snap.pids.length);
-  if (!running) await lossless.startMinimized(exe);
+  if (!running) {
+    // Start LS before the game and put its window away while the launch screen still covers
+    // everything, so it can never come up in front of the game or take its focus. (LS remembers
+    // "maximized" and may ignore the minimized start.)
+    await lsOps.startMinimized(exe);
+    for (let i = 0; i < 40; i++) {           // up to ~6 s for LS to show its window
+      await sleep(150);
+      const w = await lsMainWindow();
+      if (w && !w.minimized) { await helper.minimize(w.hwnd); await sleep(200); break; }
+      if (w && w.minimized) break;
+    }
+  } else await hideLsWindow();
   // A profile bound to the game's exe with Auto Scale on: LS scales by itself after its delay.
-  // Otherwise we press LS's own scale hotkey once the game is in front.
-  return { mode: prof && prof.autoScale ? 'profile' : 'hotkey', hotkey: lossless.hotkey(xml), profile: prof && prof.title, startedByUs: !running };
+  // Otherwise (or if it did not) we press LS's own scale hotkey once the game is in front.
+  return { mode: prof && prof.autoScale ? 'profile' : 'hotkey', hotkey: lossless.hotkey(xml), profile: prof && prof.title, delay: prof ? prof.autoScaleDelay : 0, startedByUs: !running };
+}
+
+// LS's own main window (title "Lossless Scaling"), if any. Its scaling output is a separate window.
+const isLsMain = (x) => /lossless scaling/i.test(x.title || '') && !x.tool;
+async function lsMainWindow() {
+  const snap = await helper.snap(0, [lossless.EXE]);
+  const ws = ((snap && snap.windows) || []).filter((x) => x.visible && x.w > 200 && x.h > 150);
+  return ws.find(isLsMain) || ws.filter((x) => !x.tool && !coversMonitor(x)).sort((a, b) => b.w * b.h - a.w * a.h)[0] || null;
+}
+async function hideLsWindow() {
+  const w = await lsMainWindow();
+  if (w && !w.minimized) { await helper.minimize(w.hwnd); return true; }
+  return false;
+}
+// While LS scales it shows its output in a window of its own over the whole screen.
+async function lsScaling() {
+  const snap = await helper.snap(0, [lossless.EXE]);
+  return ((snap && snap.windows) || []).some((x) => x.visible && !x.minimized && coversMonitor(x) && !isLsMain(x));
+}
+// The game must stay the foreground window: the controller only drives the focused window.
+async function keepGameFocused(s) {
+  const a = await helper.alive(s.hwnd);
+  if (a && a.alive && !a.isfg) { await helper.foreground(s.hwnd); log('focus back to game'); }
+  return a;
 }
 
 async function afterHandoffLossless(s) {
   const ls = s.ls; if (!ls || !ls.mode) return;
-  if (ls.startedByUs) {
-    // LS opens its own window when started; keep it out of the way without taking focus.
-    for (let i = 0; i < 20 && session === s; i++) {
-      const snap = await helper.snap(0, [lossless.EXE]);
-      const w = snap && snap.windows && snap.windows.find((x) => x.visible && !x.minimized && x.w > 200);
-      if (w) { await helper.minimize(w.hwnd); break; }
-      if (snap && snap.windows && snap.windows.some((x) => x.minimized)) break;
-      await sleep(250);
-    }
+  const live = () => session === s && phase === 'playing';
+  // Profile: LS scales by itself after its Auto Scale delay. Watch that time: keep LS's window
+  // away and the game focused. Then check that scaling really started.
+  const wait = (ls.mode === 'profile' ? Number(ls.delay || 0) + 4 : Number(s.game.losslessScalingDelay || 3)) * 1000;
+  const end = Date.now() + wait;
+  while (live() && Date.now() < end) {
+    if (await hideLsWindow()) log('LS window minimized');
+    await keepGameFocused(s);
+    if (ls.mode === 'profile' && await lsScaling()) { log('LS auto scale is on'); break; }
+    await sleep(500);
   }
-  if (ls.mode === 'hotkey' && ls.hotkey) {
-    await sleep(Number(s.game.losslessScalingDelay || 3) * 1000);
-    const a = session === s && phase === 'playing' ? await helper.alive(s.hwnd) : null;
-    if (a && a.alive && a.isfg) { await helper.keys(ls.hotkey.mods, ls.hotkey.vk); log('LS hotkey sent', ls.hotkey.label); }
-  }
+  if (!live() || !ls.hotkey) return;
+  if (await lsScaling()) return;
+  // Not scaling. Press LS's hotkey (a global hotkey, it toggles scaling) only when nothing of LS is
+  // on screen, so a scaling window we failed to recognise is never switched off, and only when the
+  // game is in front and fills the screen.
+  await hideLsWindow();
+  const snap = await helper.snap(0, [lossless.EXE]);
+  const lsVisible = ((snap && snap.windows) || []).some((x) => x.visible && !x.minimized && x.w > 200 && x.h > 150);
+  const a = await keepGameFocused(s);
+  const g = a && a.alive ? await helper.alive(s.hwnd) : null;
+  if (!live() || lsVisible || !g || !g.isfg || !coversMonitor(g.win)) { log('LS hotkey skipped', { lsVisible, fg: g && g.isfg, full: g && coversMonitor(g.win) }); return; }
+  await helper.keys(ls.hotkey.mods, ls.hotkey.vk);
+  log('LS hotkey sent', ls.hotkey.label);
+  await sleep(700);
+  await keepGameFocused(s);
 }
 
 async function handoff(s) {
@@ -277,13 +365,11 @@ async function handoff(s) {
   // The game goes to the front while the launch screen still covers it, then the screen fades away.
   await helper.foreground(w.hwnd);
   send('game-handoff', { id: s.game.id, fullscreen: r.fullscreen });
-  if (r.fullscreen) await fadeWindow(1, 0, 260);
-  else await sleep(120);
+  await fadeWindow(1, 0, 260);
   if (stop()) { if (win) win.setOpacity(1); return; }
   phase = 'playing';
-  pinTop(false);
-  await helper.below(hwndOf(win), w.hwnd);
-  if (win) win.setOpacity(1);
+  closeMenuForGame();
+  await keepGameFocused(s);
   afterHandoffLossless(s);
   watchPlaying(s);
 }
@@ -302,12 +388,12 @@ async function watchPlaying(s) {
     // Window gone. Same game with a new window (launcher -> game, renderer restart)?
     const snap = await helper.snap(s.pid, s.watchNames);
     const w = pickMain(snap);
-    if (w) { misses = 0; s.hwnd = w.hwnd; await helper.below(hwndOf(win), w.hwnd); continue; }
+    if (w) { misses = 0; s.hwnd = w.hwnd; continue; }
     if (++misses < 2) continue;
-    // The game is closing: cover the desktop right away; the runner reports the exit.
+    // The game is closing: bring the menu back right away; the runner reports the exit.
     phase = 'returning';
+    openMenu('returning');
     send('game-returning', { id: s.game.id });
-    showLauncher();
     if (snap && Array.isArray(snap.pids) && snap.pids.length === 0) runner.finishNow();
     // If it opens a window again (some games restart themselves), hand off again.
     await sleep(1500);
@@ -323,8 +409,9 @@ async function resumeGame() {
   send('game-resumed', { id: s.game.id });
   await sleep(60);
   await helper.foreground(s.hwnd);
-  pinTop(false);
-  await helper.below(hwndOf(win), s.hwnd);
+  await fadeWindow(1, 0, 200);
+  if (phase === 'playing' && session === s) closeMenuForGame();
+  else if (win) win.setOpacity(1);
 }
 
 async function onMenuFocus() {
@@ -345,8 +432,12 @@ function onMenuBlur() {
 }
 
 function homeShortcut() {
-  if (session && (phase === 'playing' || phase === 'launching')) { phase = 'overlay'; send('show-home', { id: session.game.id }); }
-  showLauncher();
+  if (session && (phase === 'playing' || phase === 'launching')) {
+    phase = 'overlay';
+    if (!win) { openMenu('home'); return; }
+    send('show-home', { id: session.game.id });
+  }
+  openMenu(null);
 }
 
 async function launchGame(g) {
@@ -354,7 +445,7 @@ async function launchGame(g) {
   const smooth = seamless();
   if (smooth) { phase = 'launching'; pinTop(true); }
   let ls = null;
-  if (g.losslessScaling && isWin) { try { ls = await prepareLossless(g); } catch (e) { ls = { mode: null, error: e.message }; } }
+  if (g.losslessScaling && (isWin || FAKE)) { try { ls = await prepareLossless(g); } catch (e) { ls = { mode: null, error: e.message }; } }
   const res = runner.launch(g, process.execPath);
   if (!res.ok) { phase = 'home'; return res; }
   session = { game: g, pid: res.pid, watchNames: runner.current.watchNames, hwnd: null, ls };
@@ -368,14 +459,14 @@ runner.on('started', (game) => {
   // No window helper (not Windows, or the helper is missing): the old way, hide the menu.
   if (!seamless() && settings.hideOnLaunch !== false) setTimeout(() => { if (runner.running && win) { pinTop(false); win.setFullScreen(false); win.hide(); } }, 700);
 });
-runner.on('error', (game, e) => { phase = 'home'; session = null; if (win) { showLauncher(); send('game-error', { id: game.id, message: e.message }); } });
+runner.on('error', (game, e) => { phase = 'home'; session = null; openMenu('exit'); send('game-error', { id: game.id, message: e.message }); });
 runner.on('exited', (game, info) => {
   state.lastPlayed[game.id] = Date.now();
   state.playSeconds[game.id] = (state.playSeconds[game.id] || 0) + (info.failed ? 0 : info.seconds);
   state.focusId = game.id;
   writeJson(FILES.state, state);
   phase = 'home'; session = null;
-  showLauncher();
+  openMenu('exit');   // once per game session; only games launched from the menu get here
   send('game-exited', { id: game.id, seconds: info.seconds, failed: info.failed });
 });
 
@@ -497,14 +588,14 @@ app.whenReady().then(() => {
     return net.fetch(pathToFileURL(p).toString());
   });
   createWindow();
-  if (process.env.PS5MENU_SELFTEST) require(process.env.PS5MENU_SELFTEST)({ app, win, runner, FILES, readJson, getPhase: () => phase });
+  if (process.env.PS5MENU_SELFTEST) require(process.env.PS5MENU_SELFTEST)({ app, win, getWin: () => win, runner, FILES, readJson, getPhase: () => phase, homeShortcut });
   // Start the window helper early so the first launch does not wait for it.
   if (seamless()) helper.snap(0, []).catch(() => {});
   // Bring the menu back from anywhere (keyboard). Controller PS button is handled in the renderer.
   try { globalShortcut.register('CommandOrControl+Alt+Home', () => homeShortcut()); } catch { /* */ }
   if (isWin && settings.autostart) app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
-  powerSaveBlocker.start('prevent-display-sleep');
 });
 app.on('before-quit', () => { quitting = true; helper.close(); });
 app.on('will-quit', () => { globalShortcut.unregisterAll(); helper.close(); });
-app.on('window-all-closed', () => app.quit());
+// The menu window is closed on purpose during a game; only quit when that is not the case.
+app.on('window-all-closed', () => { if (quitting || !session) app.quit(); });
