@@ -30,6 +30,7 @@ Resmi bir ürün değil, hayran işi bir projedir. Sony ile hiçbir bağı yoktu
 - Xbox kumandası ve klavye desteği.
 - Konsoldaki gibi oyun sırasında menüye dönüş: Esc'ye ya da Xbox düğmesine basılı tut, oyun duraklar, menüden **Devam Et** ile kaldığın yerden sürer. Başka bir oyun seçersen açık olan önce kapatılır.
 - İstersen oyun Lossless Scaling ile birlikte açılır ve ölçekleme kendiliğinden başlar.
+- Açılırken uzun süre shader hazırlayan oyunlarda (örneğin Shadow of the Colossus PC portu) yükleme ekranında ilerleme yüzdesi görünür.
 - Tek tıkla kurulum, yönetici izni istemez.
 
 ## Kurulum
@@ -97,9 +98,21 @@ Oyun açıkken menüyü Alt+F4 ile kapatırsan menü önce sorar: **İkisini de 
 
 Ayarlar ekranında Esc ve Xbox düğmesi için ayrı ayrı aç/kapat ve basılı tutma süresi (0,6 / 1 / 1,5 / 2 sn) seçilebilir. Xbox düğmesine basınca Windows'ta Game Bar açılıyorsa onu Windows Ayarlar > Oyun > Game Bar bölümünden kapatabilir ya da Görünüm + Menü'yü birlikte basılı tutabilirsin. Bazı emülatörler duraklatılmayı sevmeyebilir; öyle bir oyunda **Oyunu Düzenle** ekranındaki **Menüdeyken oyunu duraklat** satırını kapat. O zaman oyun menü açıkken simge durumunda çalışmaya devam eder.
 
+## Oyunun kendi yüklemesi
+
+Bazı oyunlar ve portlar ilk görüntüden önce uzun süre hazırlık yapar. Örneğin Shadow of the Colossus PC portu (AjncSystem/ShadowOfTheColossus-PC) her açılışta shader önbelleğini yeniden kurar ve bu sırada penceresi boş kalır. Portun kendi "Loading shaders… %" çubuğu bu aşamada çizilemez, çünkü önbellek görüntü katmanı hazırlanmadan önce okunur. Menü böyle bir oyunda yükleme ekranını açık tutar. Oyunun kapağını, adını ve **Shader'lar hazırlanıyor %NN** satırını gösterir, oyun hazır olunca her zamanki gibi oyuna geçer.
+
+Yüzde, oyunun yazdığı günlük dosyasından okunur. Oyun yüzde yazmıyorsa önbellekteki öğe sayısından ve önceki açılışların süresinden tahmin edilir. Tahmin, oyun "hazırım" demeden %100'e varmaz. Hiçbir bilgi yoksa çubuk yalnızca hareket eder. Shadow of the Colossus portu `SotC.exe --play` ile eklendiyse bu kendiliğinden çalışır. Başka bir oyun için `games.json` içinde o oyuna bir `loadProgress` alanı eklenebilir:
+
+```json
+"loadProgress": { "log": "logs\\game.log", "percent": "Compiling shaders (\\d+)%", "ready": "Renderer ready" }
+```
+
+`log` oyunun klasörüne göre ya da tam yol olarak verilir. `percent` yüzdeyi, `counter` "yapılan / toplam" sayılarını, `ready` yüklemenin bittiğini gösteren satırı yakalar. `count: { "dir": "...", "ext": ".key" }` önbellek dosyalarını sayar. Kapatmak için `"loadProgress": false` yazılır. Günlük dosyası 25 saniye içinde oluşmazsa menü beklemeyi bırakır, en uzun bekleme ise dört dakikadır.
+
 ## Lossless Scaling
 
-Steam'den [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/) kuruluysa menü onu kendisi bulur ve oyun düzenleme ekranında **Lossless Scaling ile başlat** seçeneği görünür. Açtığında LS'e o oyuna ait bir profil eklenir (Auto Scale açık, beş saniye gecikmeli). Oyunu başlattığında LS yükleme ekranının arkasında simge durumunda açılır, penceresi öne çıkarsa menü onu geri indirir. Oyun açıldıktan sonra odak oyunda tutulur, böylece kumanda oyunu kullanmaya devam eder ve ölçekleme birkaç saniye içinde kendiliğinden başlar. Auto Scale bir sebeple devreye girmezse menü, oyun ön planda ve tam ekranken ve ortada hiçbir LS penceresi yokken LS'in ölçekleme kısayoluna bir kez basar, ardından odağı oyuna geri verir. Profil eklenmeden önce LS'in ayar dosyası yedeklenir; LS o sırada açıksa profil eklenmez; LS kapalıyken oyunu başlattığında menü onu kendisi ekler. LS kurulu değilse seçeneğin yerine kısa bir not çıkar.
+Steam'den [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_Scaling/) kuruluysa menü onu kendisi bulur ve oyun düzenleme ekranında **Lossless Scaling ile başlat** seçeneği görünür. Açtığında LS'e o oyuna ait bir profil eklenir (Auto Scale açık, bir saniye gecikmeli). Oyunu başlattığında LS yükleme ekranının arkasında simge durumunda açılır, penceresi öne çıkarsa menü onu geri indirir. Oyun açıldıktan sonra odak oyunda tutulur, böylece kumanda oyunu kullanmaya devam eder ve ölçekleme birkaç saniye içinde kendiliğinden başlar. Auto Scale bir sebeple devreye girmezse menü, oyun ön planda ve tam ekranken ve ortada hiçbir LS penceresi yokken LS'in ölçekleme kısayoluna bir kez basar, ardından odağı oyuna geri verir. Profil eklenmeden önce LS'in ayar dosyası yedeklenir; LS o sırada açıksa profil eklenmez; LS kapalıyken oyunu başlattığında menü onu kendisi ekler. LS kurulu değilse seçeneğin yerine kısa bir not çıkar.
 
 LS, tam ekran özel (exclusive fullscreen) modda çalışan oyunları ölçekleyemez. Bu yüzden oyunu pencereli ya da kenarlıksız tam ekran moduna alman gerekir.
 
@@ -126,7 +139,7 @@ Menü, Windows'un Xbox kumandası desteğini kullanır. Kumanda başka bir oyund
 
 ## Geliştirme
 
-Uygulama Electron ile yazıldı. Oyun pencerelerini izleyen küçük yardımcı program `native/ps5winhelper.c` içinde, mingw ile derlenir. Testler `node test/unit.test.js`, `node test/winwatch.test.js` ve `node test/homeflow.test.js` ile çalışır; yardımcının basılı tutma mantığı `gcc native/hold_test.c` ile ayrıca denenir, geçişlerde ekrana başka bir pencere sızmadığı Linux üzerinde gerçek pencerelerle kaydedilip kare kare `tools/frame_test.sh` ile denetlenir (Xvfb, ffmpeg, ffplay, xdotool gerekir), kurulum dosyaları `node tools/build.js` ile `dist/` klasörüne çıkar.
+Uygulama Electron ile yazıldı. Oyun pencerelerini izleyen küçük yardımcı program `native/ps5winhelper.c` içinde, mingw ile derlenir. Testler `node test/unit.test.js`, `node test/winwatch.test.js`, `node test/homeflow.test.js` ve `node test/loadprogress.test.js` ile çalışır; yardımcının basılı tutma mantığı `gcc native/hold_test.c` ile ayrıca denenir, geçişlerde ekrana başka bir pencere sızmadığı Linux üzerinde gerçek pencerelerle kaydedilip kare kare `tools/frame_test.sh` ile denetlenir (`tools/frame_test.sh <klasör> progress` yükleme ilerlemesini dener) (Xvfb, ffmpeg, ffplay, xdotool gerekir), kurulum dosyaları `node tools/build.js` ile `dist/` klasörüne çıkar.
 
 ```
 cd app && npm install && npx electron . --windowed
@@ -142,7 +155,7 @@ Bu proje resmi değildir; Sony Interactive Entertainment ile bağlantısı yoktu
 
 *Definitely not a PS5 menu. It just looks a bit like one.*
 
-A game launcher for Windows that looks like the PS5 home screen. You add games, emulators or shortcuts from inside the app (the **+** tile, or Settings > Oyunları Yönet), pick a cover image or point it at a PS4 dump's `sce_sys` folder, and launch everything with a keyboard or an Xbox controller. While a game runs the menu window is closed completely and comes back when the game exits. Hold Esc or the Xbox button for about a second during a game to pause it and open the menu, then pick Devam Et to continue where you left off; starting another game closes the open one first, like on a console. If Lossless Scaling is installed through Steam, any game can start with it and scale automatically.
+A game launcher for Windows that looks like the PS5 home screen. You add games, emulators or shortcuts from inside the app (the **+** tile, or Settings > Oyunları Yönet), pick a cover image or point it at a PS4 dump's `sce_sys` folder, and launch everything with a keyboard or an Xbox controller. While a game runs the menu window is closed completely and comes back when the game exits. Hold Esc or the Xbox button for about a second during a game to pause it and open the menu, then pick Devam Et to continue where you left off; starting another game closes the open one first, like on a console. If Lossless Scaling is installed through Steam, any game can start with it and scale automatically. Games that prepare shaders for a long time before their first picture (such as the Shadow of the Colossus PC port) show their progress on the launch screen.
 
 Download `Definitely.Not.PS5.Menu.Setup.1.3.0.exe` from the [Releases](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases/latest) page and run it. It installs per user, needs no admin rights and adds Start Menu and desktop shortcuts. The app is not code signed, so SmartScreen may warn you the first time: click **More info**, then **Run anyway**. A portable zip is available as well. To uninstall, use Windows Settings > Apps. The interface is in Turkish by default; switch it under Ayarlar > Dil / Language.
 

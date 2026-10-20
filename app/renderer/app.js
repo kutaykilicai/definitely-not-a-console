@@ -558,7 +558,7 @@
   // art: game art, fading to black, spinner | busy: black + spinner | black: black only | off
   function launchScreen(mode, g) {
     const el = $('#launch'); const art = el.querySelector('.art');
-    el.classList.remove('dark', 'busy', 'instant');
+    el.classList.remove('dark', 'busy', 'instant', 'prog');
     if (mode === 'off') { el.classList.remove('on'); return; }
     if (mode === 'art') {
       const src = g && g.art && (g.art.background || g.art.cover || g.art.icon);
@@ -572,6 +572,27 @@
     }
     el.classList.add('on', 'dark', 'instant');
     if (mode === 'busy') el.classList.add('busy');
+  }
+
+  // The game's own loading before its first picture (main.js trackLoad): percent, or a moving bar
+  // when there is no number. Shown on the launch screen until the game takes over.
+  function launchProgress(d) {
+    const el = $('#launch'); const p = el.querySelector('.prog');
+    if (!d || !el.classList.contains('on')) return;
+    if (d.state !== 'run' && d.state !== 'ready') { el.classList.remove('prog'); return; }
+    const g = data.games.find((x) => x.id === d.id) || (data.allGames || []).find((x) => x.id === d.id);
+    if (!el.classList.contains('prog')) {
+      const src = g && g.art && (g.art.icon || g.art.cover);
+      p.querySelector('.ic').style.backgroundImage = src ? cssUrl(src) : '';
+      p.querySelector('.tt').textContent = (g && g.title) || '';
+      el.classList.add('prog');
+    }
+    const label = t(d.label === 'loading' ? 'loadGeneric' : 'loadShaders');
+    const pct = d.pct == null ? null : Math.max(0, Math.min(100, Math.round(d.pct)));
+    p.classList.toggle('indet', pct == null);
+    p.querySelector('.bar i').style.width = pct == null ? '' : `${pct}%`;
+    p.querySelector('.lb').textContent = pct == null ? `${label}…` : t('loadPct', { label, n: pct });
+    p.dataset.pct = pct == null ? '' : String(pct);
   }
 
   // ---------- actions ----------
@@ -750,6 +771,7 @@
   api.on('game-started', (d) => { if (!d || !d.seamless) setTimeout(() => launchScreen('black'), 400); });
   api.on('game-error', (d) => { running = null; launching = false; launchScreen('off'); $('#blackout').classList.add('off'); toast(t('launchFailed'), d.message); });
   // The game window is in front: the launch screen becomes the black backdrop behind it.
+  api.on('launch-progress', (d) => launchProgress(d));
   api.on('game-handoff', () => { $('#blackout').classList.remove('off'); launchScreen('black'); });
   api.on('game-returning', () => { closeAll(); $('#blackout').classList.remove('off'); launchScreen('busy'); });
   api.on('game-resumed', () => { closeAll(); paused = false; $('#blackout').classList.add('fast'); $('#blackout').classList.remove('off'); launchScreen('black'); });

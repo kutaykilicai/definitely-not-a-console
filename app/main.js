@@ -10,6 +10,7 @@ const { GameRunner } = require('./lib/proc');
 const { WinHelper, helperPath, hwndOf, pickMain, waitForGameWindow, coversMonitor } = require('./lib/winwatch');
 const lossless = require('./lib/lossless');
 const homeflow = require('./lib/homeflow');
+const loadprogress = require('./lib/loadprogress.js');
 
 const isWin = process.platform === 'win32';
 const argv = process.argv.slice(1);
@@ -66,7 +67,7 @@ const writeJson = (f, v) => { try { fs.writeFileSync(f, JSON.stringify(v, null, 
 let settings = { ...DEFAULT_SETTINGS, ...readJson(FILES.settings, {}) };
 const OS_USER = (() => { try { return require('os').userInfo().username; } catch { return ''; } })();
 let state = readJson(FILES.state, { lastPlayed: {}, playSeconds: {}, focusId: null });
-state.lastPlayed ||= {}; state.playSeconds ||= {}; state.windowModes ||= {};
+state.lastPlayed ||= {}; state.playSeconds ||= {}; state.windowModes ||= {}; state.loadStats ||= {};
 
 async function loadGames() {
   const doc = readJson(FILES.games, null) || { version: 1, games: [] };
@@ -460,6 +461,9 @@ async function handoff(s) {
     r = await waitForGameWindow(() => helper.snap(s.pid, s.watchNames), { expect: 'window', timeoutMs: 30 * 60e3, pollMs: 500 }, { shouldStop: stop });
     if (r.status === 'cancelled' || !r.win) return;
   }
+  // A game that loads for long before its first picture (shader cache): the launch screen shows its
+  // progress, and the game is shown only when that is over.
+  if (s.load) { await s.load.done; if (stop()) return; }
   const w = r.win;
   s.hwnd = w.hwnd; s.fullscreen = r.fullscreen;
   if (state.windowModes[s.game.id] !== (r.fullscreen ? 'fullscreen' : 'window')) { state.windowModes[s.game.id] = r.fullscreen ? 'fullscreen' : 'window'; writeJson(FILES.state, state); }
@@ -479,6 +483,34 @@ async function handoff(s) {
   const how = await engageLossless(s, 'launch');
   log('launch LS', how);
   await hideCover(250);
+}
+
+// Loading progress of the game (lib/loadprogress.js) on the launch screen, while the game's own
+// window is still blank. s.load.done resolves when it is over, could not be followed, or the
+// launch ended; the handoff waits for it.
+function trackLoad(s) {
+  let cfg = null; try { cfg = loadprogress.resolve(s.game); } catch (e) { log('load progress', e.message); }
+  if (!cfg) return;
+  const id = s.game.id;
+  const w = new loadprogress.Watcher(cfg, { t0: s.t0, learned: state.loadStats[id] || null });
+  log('load progress', cfg.preset || 'custom', cfg.log, `items ${w.items}`, `expected ${w.expected ? Math.round(w.expected) + ' ms' : '-'}`);
+  const live = () => session === s && runner.running && (phase === 'launching' || phase === 'overlay');
+  s.load = { cfg, w, done: (async () => {
+    let last = '';
+    while (live()) {
+      let v; try { v = w.poll(); } catch (e) { log('load progress', e.message); break; }
+      const msg = JSON.stringify(v);
+      if (msg !== last) { last = msg; send('launch-progress', { id, ...v }); }
+      if (w.finished()) break;
+      await sleep(200);
+    }
+    const v = w.view();
+    log('load progress end', v.state, w.measured() ? `${w.measured()} ms` : '');
+    if (v.state === 'ready') {
+      state.loadStats[id] = loadprogress.learn(state.loadStats[id], w.measured(), w.items); writeJson(FILES.state, state);
+      await sleep(cfg.settleMs);
+    } else send('launch-progress', { id, state: v.state, pct: null });
+  })() };
 }
 
 async function watchPlaying(s) {
@@ -687,10 +719,11 @@ async function launchGame(g) {
   if (smooth) { phase = 'launching'; pinTop(true); }
   let ls = null;
   if (g.losslessScaling && (isWin || FAKE)) { try { ls = await prepareLossless(g); } catch (e) { ls = { mode: null, error: e.message }; } }
+  const t0 = Date.now();
   const res = runner.launch(g, process.execPath);
   if (!res.ok) { phase = 'home'; return res; }
-  session = { game: g, pid: res.pid, watchNames: runner.current.watchNames, hwnd: null, ls };
-  if (smooth) handoff(session);
+  session = { game: g, pid: res.pid, watchNames: runner.current.watchNames, hwnd: null, ls, t0 };
+  if (smooth) { trackLoad(session); handoff(session); }
   return { ...res, seamless: smooth, lossless: ls && ls.mode };
 }
 
