@@ -83,7 +83,10 @@ ok('shadPS4 inFAMOUS: found on its own, its log lines are read', () => {
   assert.ok(c.ready.test('[Render.Vulkan] <Info> vk_pipeline_serialization.cpp:240 WarmUp: Preloaded 2412 pipelines in 18093 ms'));
   assert.ok(c.ready.test('[Render] <Info> (shadPS4:Main) vk_pipeline_serialization.cpp:1332 WarmUp: Preloaded 5192 pipelines'));   // the inFAMOUS build's own line
   assert.ok(!c.ready.test('[Render] <Info> (shadPS4:Main) vk_pipeline_serialization.cpp:1225 WarmUp: CacheRebuild: vs-formats.bin entries 0'));
-  assert.equal(L.expectedMs(c, 5831, null), 5831 * 2.5);
+  assert.equal(L.expectedMs(c, 5831, null), 7000 + 5831 * 1.5);   // ~15.7 s, as measured on Kasa
+  assert.equal(L.expectedMs(c, 5831, { msPerItem: 2.7 }), 5831 * 2.7);   // learned per item already holds the start
+  assert.equal(L.expectedMs(c, 0, null), null);
+  assert.equal(c.graceMs, 1500); assert.equal(c.graceQuiet, true);   // buffered log: the estimate is trusted
   assert.ok(c.ready.test("[Render.Vulkan] <Warning> Pipeline cache isn't compatible with current system. Ignoring the cache"));
   const one = (re, line) => { re.lastIndex = 0; const m = re.exec(line); return m ? m.slice(1).join('/') : null; };
   assert.equal(one(c.percent, 'Compiling shaders: 45%'), '45');
@@ -113,6 +116,9 @@ ok('stall rules: quiet log after the estimate ran out; numbers that stopped; gra
   now.t = Date.now(); const w4 = new L.Watcher({ ...base, graceMs: 5000 }, { t0: now.t, now, learned: { ms: 10000 } });
   for (let i = 0; i < 16; i++) { fs.appendFileSync(lg, 'busy\n'); now.t += 1000; w4.poll(); }
   assert.equal(w4.view().state, 'due');                // the log keeps growing, no ready line: shown after expected + 5 s
+  assert.equal(L.resolve({ id: 'x', exe: 'C:\\g\\x.exe', loadProgress: { log: 'l.txt', graceQuiet: 1, startMs: 3000 } }).graceQuiet, true);
+  assert.equal(L.resolve({ id: 'x', exe: 'C:\\g\\x.exe', loadProgress: { log: 'l.txt' } }).graceQuiet, false);
+  assert.equal(L.expectedMs({ msPerItem: 2, startMs: 3000, count: {} }, 100, null), 3200);
   now.t = Date.now(); const w5 = new L.Watcher(base, { t0: now.t, now });
   assert.equal(w5.maxMs, 180000); w5.abort('hung'); assert.equal(w5.poll().state, 'hung');
 });

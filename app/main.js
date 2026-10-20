@@ -523,6 +523,12 @@ function trackLoad(s) {
     }
     if (v.state === 'exited') { await sleep(1500); return; }   // the runner reports the exit
     if (!live()) return;   // the game ended (the runner brings the menu back) or the launch was left
+    // The estimate ran out for a game whose log is buffered (the ready line comes late): a normal end.
+    if (v.state === 'due' && cfg.graceQuiet) {
+      send('launch-progress', { id, ...v, state: 'ready', pct: 100 });
+      await sleep(cfg.settleMs);
+      return;
+    }
     // Waiting any longer would not help: say why on the launch screen for a moment, then show the
     // game as it is (holding Esc / the Xbox button brings the menu back, where it can be closed).
     send('launch-progress', { id, ...v });

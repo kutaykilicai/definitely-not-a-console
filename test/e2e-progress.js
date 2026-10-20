@@ -94,6 +94,26 @@ module.exports = ({ app, getWin, FILES, readJson, getPhase }) => {
 
   // Loading that never ends: the log stops after one line. Expected 2 s (50 items x 40 ms), stall
   // after 3 s without log growth: the warning shows, then the game is revealed.
+  // A game whose log is buffered (shadPS4): the ready line is not on disk in time. graceQuiet: the
+  // estimate is trusted, the game is shown shortly after it ran out, as a normal end (no warning).
+  async function bufferedCase() {
+    F.reset('auto');
+    const lf = `${D}/b/shad_log.txt`; const cache = `${D}/b/cache/X`;
+    fs.mkdirSync(cache, { recursive: true });
+    for (let i = 0; i < 50; i++) fs.writeFileSync(path.join(cache, `${i}.key`), '');
+    setGame('kiyi-kasabasi', { args: `12 log=${lf} warm=8`, loadProgress: { log: lf, ready: 'Preloaded \\d+ pipelines', count: { dir: `${D}/b/cache`, ext: '.key' }, startMs: 1000, msPerItem: 40, maxMs: 60000, graceMs: 1000, graceQuiet: true } });
+    const before = JSON.stringify((readJson(FILES.state, {}).loadStats || {})['kiyi-kasabasi'] || null);
+    const { seen } = await run('kiyi-kasabasi', lf);
+    const warned = seen.find((x) => /beklenenden|yanıt vermiyor/.test(x[4] || ''));
+    const playingAt = seen.find((x) => x[1] === 'playing');
+    const pcts = seen.filter((x) => x[3]).map((x) => Number(x[3]));
+    check('buffered log: no warning on a normal launch', !warned, warned && `${warned[0]} ms: ${warned[4]}`);
+    check('buffered log: shown soon after the estimate + 1 s grace, not after a notice', !!playingAt && playingAt[0] > 2000 && playingAt[0] < 7000, playingAt && `${playingAt[0]} ms`);
+    check('buffered log: ends at 100 %', pcts.length && Math.max(...pcts) === 100, `max ${Math.max(0, ...pcts)}`);
+    check('buffered log: nothing learned from a guess', JSON.stringify((readJson(FILES.state, {}).loadStats || {})['kiyi-kasabasi'] || null) === before);
+    await F.term((await F.snap(0, [])).pids); await waitExit();
+  }
+
   async function stallCase() {
     F.reset('auto');
     const lf = `${D}/s/last_run.log`; const cache = `${D}/s/cache/X`;
@@ -148,7 +168,7 @@ module.exports = ({ app, getWin, FILES, readJson, getPhase }) => {
       fs.rmSync(D, { recursive: true, force: true });
       await sleep(1500);
       await percentCase();
-      if (!process.env.E2E_ONLY_PERCENT) { await estimateCase(); await noLogCase(); await stallCase(); await hungCase(); await exitCase(); }
+      if (!process.env.E2E_ONLY_PERCENT) { await estimateCase(); await bufferedCase(); await noLogCase(); await stallCase(); await hungCase(); await exitCase(); }
     } catch (e) { log('ERROR', e.stack); results.push(['exception', false]); save(); }
     const failed = results.filter((r) => !r[1]).length;
     log(`${results.length - failed}/${results.length} checks passed`);

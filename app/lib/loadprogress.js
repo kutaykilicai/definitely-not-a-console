@@ -13,7 +13,10 @@
 //   counter  regex with two groups: "done / total" the game prints
 //   count    { dir, ext }: number of cached items (files with that extension in the newest
 //            sub folder of dir), for an estimate from earlier launches when the game prints no
-//            numbers; msPerItem is the first guess before anything was measured
+//            numbers; msPerItem (plus startMs, the time before the rebuild starts) is the first
+//            guess before anything was measured
+//   graceMs  no ready line this long after the estimate ran out: the game is shown ('due');
+//            graceQuiet: true makes that a normal end (for games whose log is buffered)
 //   label    'shaders' (Shader'lar hazırlanıyor) | 'loading' (Yükleniyor)
 //   stallMs  loading should be over (the estimate ran out, or the game's own numbers stopped) and
 //            for this long since then the log has not grown: the menu stops waiting and shows
@@ -55,13 +58,19 @@ const PRESETS = {
     counter: '(?:shader|pipeline)s?[^\\n]*?\\b(\\d+)\\s*/\\s*(\\d+)\\b',
     fail: 'Emulator closed|Exiting the emulator',
     count: { dir: ['user/cache', '%APPDATA%/shadPS4/cache'], ext: '.key' },
-    // Measured on the inFAMOUS build (branch second-son, v0.17.0-747): the warm-up builds the
-    // pipelines on 8 threads, 5192 of 5831 cached in 7.7 s, then logs "WarmUp: Preloaded 5192
-    // pipelines". No percentage in the log (the build draws its own in its window).
-    msPerItem: 2.5,
-    // Its log keeps growing once the game runs, and builds differ in what they print: when no
-    // ready line came, the game is shown 5 s after the estimate ran out, and after 90 s at most.
-    graceMs: 5000,
+    // Measured on Kasa with the inFAMOUS build (branch second-son, v0.17.1): the emulator needs
+    // about 7 s before the warm-up starts, then the warm-up builds the pipelines on 8 threads
+    // (5831 cached: 2112 built, 5192 preloaded, "WarmUp: total 8210 ms"), so "Preloaded" comes
+    // about 15-16 s after the start. No percentage in the log (the build draws its own in its
+    // window).
+    startMs: 7000,
+    msPerItem: 1.5,
+    // shadPS4 writes its log through a buffer and only flushes errors: after the warm-up the log is
+    // quiet, so the "Preloaded" line can reach the disk many seconds late (on Kasa it was still
+    // not there 20 s after the start). So the estimate is trusted: 1.5 s after it ran out the game
+    // is shown as a normal end (no warning), and after 90 s at most.
+    graceMs: 1500,
+    graceQuiet: true,
     maxMs: 90e3,
     label: 'shaders',
   },
@@ -101,6 +110,8 @@ function resolve(game) {
     counter: re(base.counter, 'gmi'),
     count: base.count && base.count.dir ? { dir: abs(base.count.dir), ext: String(base.count.ext || '') } : null,
     msPerItem: Number(base.msPerItem) > 0 ? Number(base.msPerItem) : 0,
+    startMs: Number(base.startMs) > 0 ? Number(base.startMs) : 0,
+    graceQuiet: !!base.graceQuiet,
     label: base.label === 'loading' ? 'loading' : 'shaders',
     maxMs: Number(base.maxMs) > 0 ? Number(base.maxMs) : 180e3,
     fixedMax: Number(base.maxMs) > 0,
@@ -130,7 +141,7 @@ function expectedMs(cfg, items, learned) {
   if (cfg.count && !items) return null;   // nothing cached: nothing to rebuild, no guess
   if (learned && learned.msPerItem > 0 && items > 0) return learned.msPerItem * items;
   if (learned && learned.ms > 0) return learned.ms;
-  if (cfg.msPerItem > 0 && items > 0) return cfg.msPerItem * items;
+  if (cfg.msPerItem > 0 && items > 0) return (cfg.startMs || 0) + cfg.msPerItem * items;
   return null;
 }
 
