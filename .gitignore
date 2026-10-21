@@ -25,3 +25,18 @@ tools/*.py
 tools/render.sh
 tools/render_all.sh
 test/e2e-motion.js
+test/root-x360/
+shots/
+test/root-x360ref/
+# the user's own boot intro files (videos, sounds, logos): never in the repo or the package
+*-boot.mp4
+*-boot.webm
+*-boot.m4v
+*-boot.wav
+*-boot.mp3
+*-boot.ogg
+ps5-logo.png
+x360-logo.png
+test/root*/intro/
+# measurement helpers for the Xbox 360 work (need the local reference material)
+tools/x360/*.py

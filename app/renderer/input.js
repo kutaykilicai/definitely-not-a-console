@@ -58,6 +58,7 @@
     Tab: 'tabToggle', q: 'tabPrev', Q: 'tabPrev', e: 'tabNext', E: 'tabNext',
     ContextMenu: 'options', o: 'options', O: 'options', F10: 'options',
     Home: 'home', h: 'home', H: 'home',
+    x: 'x', X: 'x', y: 'y', Y: 'y',
   };
   function keyAction(ev) {
     if (ev.altKey || ev.ctrlKey || ev.metaKey) return null;

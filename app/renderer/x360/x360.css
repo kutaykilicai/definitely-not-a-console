@@ -1,0 +1,78 @@
+/* Xbox 360 style dashboard (2012-2013 "metro" home). Original CSS, measured against 720p
+   captures upscaled to 1920x1080 (reference/x360/SPEC.md). Segoe UI comes from Windows itself,
+   Selawik (Microsoft's open Segoe UI fallback) is only a fallback, nothing is bundled. */
+:root {
+  --x-font: 'Segoe UI', 'Selawik', 'Segoe UI Variable Text', sans-serif;
+  --x-green: rgb(4, 129, 4);
+  --x-ease: cubic-bezier(0.22, 0.8, 0.3, 1);
+  /* measured on the 30 fps reference capture (tools/x360/timing.md): panel slide ~424 ms, focus ~200 ms, tab strip ~170 ms */
+  --x-slide: cubic-bezier(0.317, 0.352, 0.076, 1);
+}
+#x360 { position: absolute; inset: 0; z-index: 6; overflow: hidden; visibility: hidden; pointer-events: none; font-family: var(--x-font); color: #fff;
+  -webkit-font-smoothing: antialiased; }
+/* Kept laid out (but hidden) while the PS5 menu is on screen, so a switch has nothing to build. */
+#stage.c-x360 #x360, #stage.c-anim #x360 { visibility: visible; }
+#stage.c-x360:not(.c-anim) #x360 { pointer-events: auto; }
+#ps5view { position: absolute; inset: 0; }
+#stage.c-x360:not(.c-anim) #ps5view { visibility: hidden; }
+#stage.c-anim #ps5view, #stage.c-anim #x360 { will-change: transform, opacity; }
+
+#x360 .x-bg { position: absolute; inset: 0;
+  background: linear-gradient(to bottom, rgb(59,58,61) 0px, rgb(61,60,63) 45px, rgb(66,65,68) 90px, rgb(71,70,73) 135px, rgb(76,75,78) 180px, rgb(81,80,83) 225px, rgb(89,88,91) 270px, rgb(96,96,99) 315px, rgb(106,106,109) 360px, rgb(116,116,119) 405px, rgb(128,127,130) 450px, rgb(141,140,143) 495px, rgb(151,150,153) 540px, rgb(159,160,163) 585px, rgb(172,171,174) 630px, rgb(177,177,180) 675px, rgb(180,181,184) 720px, rgb(185,185,188) 765px, rgb(182,181,184) 810px, rgb(176,175,177) 855px, rgb(167,166,169) 900px, rgb(158,157,160) 945px, rgb(151,150,153) 990px, rgb(143,142,145) 1035px, rgb(139,138,141) 1080px); }
+
+/* Gamertag and gamerpic, top right */
+#x360 .x-user { position: absolute; right: 136px; top: 53px; height: 48px; display: flex; align-items: center; }
+#x360 .x-user .gt { font-size: 30px; line-height: 48px; font-weight: 400; margin-right: 15.5px; color: rgb(226,225,228); text-shadow: 1px 1px 2px rgba(0,0,0,0.35), 0 0 1px rgba(255,255,255,0.5); letter-spacing: 0; }
+#x360 .x-user .pic { width: 48px; height: 48px; background: var(--x-green) center/cover no-repeat; display: flex; align-items: center; justify-content: center; font-size: 28px; }
+
+/* Tabs (pivot headers) */
+#x360 .x-tabs { position: absolute; left: 232px; top: 171px; height: 64px; display: flex; white-space: nowrap; transition: transform 170ms var(--x-ease); }
+#x360 .x-tab { font-size: 49px; line-height: 64px; font-weight: 300; color: rgba(255,255,255,0.34); margin-right: 64.5px; transition: color 70ms; text-shadow: 1px 1px 2px rgba(0,0,0,0.18); }
+#x360 .x-tab.sel { color: #fff; font-weight: 600; letter-spacing: -0.8px; margin-right: 58.5px; text-shadow: 2px 2px 3px rgba(0,0,0,0.5); }
+
+/* Panels */
+#x360 .x-track { position: absolute; left: 0; top: 0; width: 100%; height: 100%; transition: transform 424ms var(--x-slide); }
+#x360 .x-panel { position: absolute; top: 0; height: 100%; transition: opacity 300ms var(--x-ease), filter 300ms var(--x-ease); opacity: 0.5; filter: brightness(0.9); }
+#x360 .x-panel.cur { opacity: 1; filter: none; }
+#x360 .x-tile { position: absolute; overflow: hidden; background: var(--x-green) center/cover no-repeat; color: #fff;
+  transition: transform 200ms var(--x-ease), box-shadow 200ms var(--x-ease); transform-origin: 50% 50%; }
+#x360 .x-tile.focus { transform: translate(-1px,-1px) scale(1.072); z-index: 4; box-shadow: 0 3px 14px rgba(0,0,0,0.55); }
+#x360 .x-tile.focus::after { content: ''; position: absolute; inset: 0; pointer-events: none;
+  background: linear-gradient(163deg, rgba(255,255,255,0.25) 0%, rgba(255,255,255,0) 38%); }
+#x360 .x-tile .ic { position: absolute; left: 50%; top: 81px; width: 72px; height: 72px; margin: -36px 0 0 -36px; color: rgb(216,222,218); }
+#x360 .x-tile .lb { position: absolute; left: 14px; right: 10px; bottom: 5px; font-size: 28px; line-height: 38px; font-weight: 400; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  text-shadow: 1px 1px 1px rgba(0,0,0,0.25), 0 0 1px rgba(255,255,255,0.5); letter-spacing: 0.9px; }
+#x360 .x-tile.art .strip { position: absolute; left: 0; right: 0; bottom: 0; height: 48px; background: rgba(0,0,0,0.71); }
+#x360 .x-tile.art .lb { bottom: 7px; color: rgb(246,246,243); text-shadow: 0 0 1px rgba(255,255,255,0.5); }
+#x360 .x-tile.dark { background-color: rgb(25,25,29); }
+#x360 .x-tile.boxart { background: linear-gradient(160deg, var(--h1), var(--h2)); }
+#x360 .x-tile.boxart { overflow: hidden; }
+#x360 .x-tile.boxart .boxbg { position: absolute; left: 0; top: 0; width: 100%; height: 100%; }
+#x360 .x-tile.boxart .boxic { position: absolute; left: 50%; top: 42%; width: 46%; height: 62%; transform: translate(-50%, -50%); background: center/contain no-repeat; filter: drop-shadow(0 6px 10px rgba(0,0,0,0.35)); }
+#x360 .x-tile.boxart.sm .boxic { width: 52%; height: 56%; }
+#x360 .x-tile.boxart.icon .boxic { width: 96px; height: 96px; image-rendering: auto; }
+#x360 .x-tile .run { position: absolute; right: 12px; top: 12px; width: 14px; height: 14px; border-radius: 50%; background: #9be23a; box-shadow: 0 0 0 3px rgba(0,0,0,0.35); }
+#x360 .x-cap { position: absolute; font-size: 18px; line-height: 20px; letter-spacing: 1.5px; font-weight: 600; color: rgba(255,255,255,0.8); text-transform: uppercase; }
+#x360 .x-bubble { position: absolute; background: rgb(8,135,14); color: rgba(255,255,255,0.75); font-size: 26px; line-height: 55px; padding: 0 33px 0 0; text-align: right; overflow: visible; white-space: nowrap; }
+#x360 .x-bubble::after { content: ''; position: absolute; left: var(--tail, 110px); bottom: -22px; border-style: solid; border-color: rgb(8,135,14) transparent transparent transparent; border-width: 22px 14px 0 0; }
+
+/* Button hints, bottom left */
+#x360 .x-hints { position: absolute; left: 141px; top: 965px; display: flex; align-items: center; gap: 34px; }
+#x360 .x-hints .h { display: flex; align-items: center; font-size: 28px; line-height: 40px; text-shadow: 2px 2px 2px rgba(0,0,0,0.5), 0 0 1px rgba(255,255,255,0.5); }
+#x360 .x-hints .h svg { width: 39px; height: 39px; margin-right: 11px; }
+#x360 .x-hints .h img.hm { width: 39px; height: 39px; margin-right: 11px; object-fit: contain; }
+#x360 .x-hints .h .kbd { font-size: 20px; line-height: 30px; min-width: 39px; padding: 0 8px; margin-right: 11px; border-radius: 6px; background: rgba(0,0,0,0.38); text-align: center; }
+
+/* Overlays opened from the Xbox 360 menu: light panels with the green highlight */
+#stage.c-x360 #overlay .full { background: linear-gradient(to bottom, rgb(66,65,68), rgb(150,149,152) 60%, rgb(140,139,142)); font-family: var(--x-font); }
+#stage.c-x360 #overlay .full h1 { font-family: var(--x-font); font-weight: 300; text-transform: lowercase; }
+#stage.c-x360 #overlay .it { font-family: var(--x-font); }
+#stage.c-x360 #overlay .it.focus { background: var(--x-green) !important; color: #fff !important; }
+#stage.c-x360 #overlay .pop, #stage.c-x360 #overlay .dialog { background: rgba(236,236,236,0.97) !important; color: #222 !important; font-family: var(--x-font); border-radius: 0 !important; }
+#stage.c-x360 #overlay .pop .it:not(.focus), #stage.c-x360 #overlay .dialog .btn:not(.focus) { color: #222 !important; }
+#stage.c-x360 #overlay .dialog .btn.focus { background: var(--x-green) !important; color: #fff !important; }
+#stage.c-x360 #hints { font-family: var(--x-font); }
+
+
+#x360 .x-tile .ic.at { margin: 0; }
+#x360 .x-panel:not(.cur) .x-tile .lb { opacity: 0.45; }

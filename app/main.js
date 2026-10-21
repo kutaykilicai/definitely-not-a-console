@@ -2,6 +2,7 @@
 const { app, BrowserWindow, ipcMain, protocol, net, shell, screen, globalShortcut, powerSaveBlocker, dialog } = require('electron');
 const path = require('path');
 const fs = require('fs');
+const { Readable } = require('stream');
 const { pathToFileURL } = require('url');
 const { execFile } = require('child_process');
 const { resolveArt, emuBadge, readShortcut, readSceSys } = require('./lib/detect');
@@ -25,7 +26,9 @@ const DATA = ROOT_ENV ? path.join(ROOT_ENV, 'data') : path.join(app.getPath('app
 const USER_ASSETS = ROOT_ENV ? path.join(ROOT_ENV, 'assets', 'user') : path.join(DATA, 'assets');
 const ROOT = ROOT_ENV || DATA;
 const BUILTIN = path.join(__dirname, 'assets');
-for (const d of [DATA, USER_ASSETS, path.join(USER_ASSETS, 'fonts'), path.join(USER_ASSETS, 'sounds'), path.join(USER_ASSETS, 'games')]) {
+// Console boot intros: the user's own files go here (%APPDATA%\Definitely Not PS5 Menu\intro).
+const INTRO_DIR = path.join(ROOT, 'intro');
+for (const d of [DATA, INTRO_DIR, USER_ASSETS, path.join(USER_ASSETS, 'fonts'), path.join(USER_ASSETS, 'sounds'), path.join(USER_ASSETS, 'games')]) {
   try { fs.mkdirSync(d, { recursive: true }); } catch { /* read-only is fine */ }
 }
 // Earlier builds were called "PS5 Menu": first %APPDATA%\PS5 Menu, before that data\ next to the
@@ -43,6 +46,7 @@ const FILES = { games: path.join(DATA, 'games.json'), settings: path.join(DATA, 
 const DEFAULT_SETTINGS = {
   language: 'tr',
   intro: 'press',            // press | fade | none
+  bootIntro: 'once',         // once (console boot intro once per app start, per console) | off
   sounds: true,
   music: true,               // only plays if assets/user/sounds/ambient.* exists
   volume: 0.6,
@@ -118,6 +122,29 @@ function listUserAssets() {
   return { fonts, sounds, avatar: pick('avatar'), boot: pick('boot'), dir: USER_ASSETS };
 }
 
+// Boot intro files, in this order: <kind>-boot.mp4/.webm (played full screen with its own sound,
+// instead of the drawn animation); otherwise the drawn animation with <kind>-boot.wav/.mp3/.ogg as
+// its sound and <kind>-logo.png as its mark; files that are missing fall back to the original ones.
+// Logos go to the page as data URLs: the page reads their pixels (to split sphere/word or symbol/word),
+// which a ps5file:// picture (another origin) would not allow.
+const pngData = (f) => { try { const b = fs.readFileSync(f); return b.length < 8 * 1024 * 1024 ? `data:image/png;base64,${b.toString('base64')}` : null; } catch { return null; } };
+function listIntroFiles() {
+  const find = (base, exts) => { for (const ext of exts) { for (const n of [`${base}.${ext}`, `${base}.${ext.toUpperCase()}`]) { const f = path.join(INTRO_DIR, n); if (fs.existsSync(f)) return fileUrl(f); } } return null; };
+  // intro.json (optional) trims a video without changing the file: {"ps5": {"start": 1.02, "end": 13.8}}
+  // in seconds; end is where the fade into the menu starts (the video keeps playing under it).
+  let trim = {};
+  try { trim = JSON.parse(fs.readFileSync(path.join(INTRO_DIR, 'intro.json'), 'utf8')) || {}; } catch { /* none */ }
+  const num = (v) => (Number.isFinite(Number(v)) && Number(v) >= 0 ? Number(v) : null);
+  const one = (k) => {
+    const tr = trim[k] || trim[`${k}-boot`] || {};
+    return { video: find(`${k}-boot`, ['mp4', 'webm']), audio: find(`${k}-boot`, ['wav', 'mp3', 'ogg']), logo: pngData(path.join(INTRO_DIR, `${k}-logo.png`)), start: num(tr.start), end: num(tr.end) };
+  };
+  return { dir: INTRO_DIR, ps5: one('ps5'), x360: one('x360') };
+}
+// Which boot intros already played since the app started. Kept here, not in the window, because the
+// window is made again after a game and that must not count as a new start.
+const bootShown = { ps5: false, x360: false };
+
 async function buildInit() {
   const doc = await loadGames();
   const all = [];
@@ -132,8 +159,14 @@ async function buildInit() {
       playSeconds: state.playSeconds[g.id] || 0,
     });
   }
+  // x360Scene: a fixed Xbox 360 dashboard scene used only by the reference comparison (tools/x360).
+  const scene = settings.x360Scene ? JSON.parse(JSON.stringify(settings.x360Scene)) : null;
+  if (scene) {
+    if (scene.avatar) scene.avatar = fileUrl(scene.avatar);
+    for (const p of scene.panels || []) for (const t of p.tiles || []) if (t.image) t.image = fileUrl(t.image);
+  }
   return {
-    games: all.filter((g) => !g.hidden), allGames: all, settings: { ...settings, username: settings.username || OS_USER }, state, user: listUserAssets(), platform: process.platform,
+    games: all.filter((g) => !g.hidden), allGames: all, settings: { ...settings, username: settings.username || OS_USER, x360Scene: scene }, state, user: listUserAssets(), boot: { files: listIntroFiles(), shown: { ...bootShown } }, platform: process.platform,
     paths: { root: ROOT, data: DATA, games: FILES.games, userAssets: USER_ASSETS },
     running: runner.running ? runner.current.game.id : null,
     paused: !!(session && (phase === 'paused' || phase === 'pausing' || phase === 'overlay')),
@@ -142,6 +175,22 @@ async function buildInit() {
     lossless: { installed: !!((isWin || FAKE) && lsOps.findExe(settings.losslessScalingExe)) || !!process.env.PS5MENU_FAKE_LS },
     migration,
   };
+}
+
+function mediaResponse(p, range) {
+  let size; try { size = fs.statSync(p).size; } catch { return new Response('not found', { status: 404 }); }
+  const type = /\.webm$/i.test(p) ? 'video/webm' : 'video/mp4';
+  const m = range && /bytes=(\d*)-(\d*)/.exec(range);
+  let start = 0, end = size - 1, status = 200;
+  if (m) {
+    if (m[1] === '' && m[2] !== '') { start = Math.max(0, size - Number(m[2])); } else { start = Number(m[1] || 0); if (m[2] !== '') end = Math.min(size - 1, Number(m[2])); }
+    if (start > end || start >= size) return new Response(null, { status: 416, headers: { 'Content-Range': `bytes */${size}` } });
+    status = 206;
+  }
+  const body = Readable.toWeb(fs.createReadStream(p, { start, end }));
+  const headers = { 'Content-Type': type, 'Accept-Ranges': 'bytes', 'Content-Length': String(end - start + 1) };
+  if (status === 206) headers['Content-Range'] = `bytes ${start}-${end}/${size}`;
+  return new Response(body, { status, headers });
 }
 
 const runner = new GameRunner();
@@ -834,6 +883,7 @@ ipcMain.handle('game-delete', async (_e, id) => {
   if (library.deleteEntry(doc, id)) { saveGames(doc); library.clearArt(USER_ASSETS, id); delete state.lastPlayed[id]; delete state.playSeconds[id]; writeJson(FILES.state, state); }
   return buildInit();
 });
+ipcMain.handle('boot-shown', (_e, kind) => { if (kind in bootShown) bootShown[kind] = true; return { ...bootShown }; });
 ipcMain.handle('save-state', (_e, patch) => { Object.assign(state, patch || {}); writeJson(FILES.state, state); return true; });
 ipcMain.handle('set-setting', (_e, key, value) => {
   settings[key] = value; writeJson(FILES.settings, settings);
@@ -893,6 +943,8 @@ app.whenReady().then(() => {
   protocol.handle('ps5file', (req) => {
     const u = new URL(req.url);
     const p = decodeURIComponent(u.pathname.replace(/^\//, ''));
+    // Videos (boot intros) need byte ranges to seek (start trim); everything else as before.
+    if (/\.(mp4|webm|m4v)$/i.test(p)) return mediaResponse(p, req.headers.get('range'));
     return net.fetch(pathToFileURL(p).toString());
   });
   createWindow();

@@ -9,6 +9,7 @@ contextBridge.exposeInMainWorld('ps5', {
   saveGame: (draft) => ipcRenderer.invoke('game-save', draft),
   moveGame: (id, delta) => ipcRenderer.invoke('game-move', id, delta),
   deleteGame: (id) => ipcRenderer.invoke('game-delete', id),
+  bootShown: (k) => ipcRenderer.invoke('boot-shown', k),
   saveState: (p) => ipcRenderer.invoke('save-state', p),
   setSetting: (k, v) => ipcRenderer.invoke('set-setting', k, v),
   hideGame: (id) => ipcRenderer.invoke('hide-game', id),

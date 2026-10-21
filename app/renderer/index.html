@@ -5,9 +5,11 @@
 <meta http-equiv="Content-Security-Policy" content="default-src 'self' ps5file: data: blob:; img-src 'self' ps5file: data: blob:; media-src 'self' ps5file: data: blob:; font-src 'self' ps5file: data:; style-src 'self' 'unsafe-inline'; script-src 'self'">
 <title>Definitely Not PS5 Menu</title>
 <link rel="stylesheet" href="styles.css">
+<link rel="stylesheet" href="x360/x360.css">
 </head>
 <body>
 <div id="stage">
+  <div id="ps5view">
   <div id="bg"><div class="bgimg" id="bgA"></div><div class="bgimg" id="bgB"></div><div id="bgfallback"></div></div>
   <div id="scrim"><div class="s-top"></div><div class="s-left"></div><div class="s-bottom"></div></div>
 
@@ -47,6 +49,9 @@
       <div class="clock"></div>
     </div>
   </div>
+  </div>
+
+  <div id="x360"></div>
 
   <div id="overlay"></div>
   <div id="toast"><div class="ic"></div><div class="tx"><div class="t1"></div><div class="t2"></div></div></div>
@@ -54,12 +59,17 @@
   <div id="intro"><canvas></canvas><div class="msg"></div><div class="emblem"></div></div>
   <div id="blackout"></div>
   <div id="launch"><div class="art"></div><div class="prog"><div class="ic"></div><div class="tt"></div><div class="bar"><i></i></div><div class="lb"></div></div><div class="spin"><i></i></div></div>
+  <div id="boot"></div>
 </div>
 <script src="strings.js"></script>
 <script src="icons.js"></script>
 <script src="nav.js"></script>
 <script src="input.js"></script>
 <script src="sound.js"></script>
+<script src="consoles.js"></script>
+<script src="x360/x360nav.js"></script>
+<script src="x360/x360.js"></script>
+<script src="boot.js"></script>
 <script src="mock.js"></script>
 <script src="app.js"></script>
 </body>

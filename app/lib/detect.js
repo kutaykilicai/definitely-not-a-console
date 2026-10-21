@@ -141,6 +141,7 @@ function emuBadge(target) {
   if (/rpcs3/.test(t)) return 'PS3';
   if (/pcsx2/.test(t)) return 'PS2';
   if (/duckstation|epsxe|mednafen/.test(t)) return 'PS1';
+  if (/xenia/.test(t)) return 'X360';
   return null;
 }
 

@@ -28,6 +28,42 @@
       g.gain.setValueAtTime(0.0001, t0); g.gain.exponentialRampToValueAtTime(gain, t0 + 0.006); g.gain.exponentialRampToValueAtTime(0.0001, t0 + dur);
       o.connect(g); g.connect(this.master); o.start(t0); o.stop(t0 + dur + 0.02);
     }
+    // Original synthesized boot sounds (used when the user has no <kind>-boot.wav/.mp3/.ogg).
+    // Events follow the measured picture timeline in boot.js. Returns stop(fadeSeconds).
+    bootSynth(kind) {
+      if (!this.enabled) return null;
+      const ctx = this._ctx(); if (!ctx) return null;
+      const out = ctx.createGain(); out.gain.value = 1; out.connect(this.master);
+      const t0 = ctx.currentTime + 0.02; const nodes = [];
+      const noise = (() => { const b = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate); const d = b.getChannelData(0); let s = 1; for (let i = 0; i < d.length; i++) { s = (s * 16807) % 2147483647; d[i] = (s / 2147483647) * 2 - 1; } return b; })();
+      const pad = (at, f, dur, g, type = 'sine', attack = 0.3) => {
+        const o = ctx.createOscillator(); const e = ctx.createGain(); o.type = type; o.frequency.value = f;
+        e.gain.setValueAtTime(0.0001, t0 + at); e.gain.exponentialRampToValueAtTime(g, t0 + at + attack); e.gain.exponentialRampToValueAtTime(0.0001, t0 + at + dur);
+        o.connect(e); e.connect(out); o.start(t0 + at); o.stop(t0 + at + dur + 0.05); nodes.push(o);
+      };
+      const whoosh = (at, dur, f0, f1, g) => {
+        const s = ctx.createBufferSource(); s.buffer = noise; s.loop = true;
+        const f = ctx.createBiquadFilter(); f.type = 'bandpass'; f.Q.value = 1.2;
+        f.frequency.setValueAtTime(f0, t0 + at); f.frequency.exponentialRampToValueAtTime(f1, t0 + at + dur * 0.6); f.frequency.exponentialRampToValueAtTime(f0, t0 + at + dur);
+        const e = ctx.createGain(); e.gain.setValueAtTime(0.0001, t0 + at); e.gain.exponentialRampToValueAtTime(g, t0 + at + dur * 0.45); e.gain.exponentialRampToValueAtTime(0.0001, t0 + at + dur);
+        s.connect(f); f.connect(e); e.connect(out); s.start(t0 + at); s.stop(t0 + at + dur + 0.05); nodes.push(s);
+      };
+      if (kind === 'x360') {
+        // player time (0 = 0.40 s into the measured sequence)
+        whoosh(0.0, 0.9, 500, 2400, 0.10);
+        whoosh(0.8, 1.2, 700, 1800, 0.06); pad(0.8, 110, 2.2, 0.03, 'sine', 0.6);
+        whoosh(2.95, 1.05, 300, 3000, 0.16);
+        whoosh(3.9, 0.8, 900, 2600, 0.07);
+        [659.25, 987.77, 1318.5, 1661.2].forEach((f, i) => { pad(4.72 + i * 0.035, f, 2.6, 0.05 - i * 0.008, 'sine', 0.02); pad(4.72 + i * 0.035, f * 1.004, 2.2, 0.02, 'triangle', 0.02); });
+        pad(4.72, 164.8, 2.4, 0.04, 'sine', 0.05);
+      } else {
+        // PS5: a low swell rising with the light, an airy lift at the flare, a soft warm chord with the specks.
+        [110, 164.81].forEach((f) => pad(0.1, f, 4.2, 0.03, 'sine', 3.2));
+        whoosh(2.6, 1.6, 1200, 4200, 0.03);
+        [440, 554.37, 659.25, 880].forEach((f, i) => pad(3.75 + i * 0.05, f, 3.2, 0.03 - i * 0.004, 'sine', 0.12));
+      }
+      return (fade = 0.4) => { const n = ctx.currentTime; out.gain.cancelScheduledValues(n); out.gain.setValueAtTime(out.gain.value, n); out.gain.linearRampToValueAtTime(0.0001, n + Math.max(0.02, fade)); setTimeout(() => { for (const o of nodes) { try { o.stop(); } catch { /* */ } } out.disconnect(); }, fade * 1000 + 80); };
+    }
     play(name) {
       if (!this.enabled) return;
       const ctx = this._ctx(); if (!ctx) return;
@@ -39,6 +75,7 @@
         case 'back': this._tone(t, 990, 0.09, 0.06, 'sine', 660); break;
         case 'bump': this._tone(t, 220, 0.06, 0.05, 'triangle'); break;
         case 'menu': this._tone(t, 1480, 0.07, 0.05); break;
+        case 'switch': this._tone(t, 520, 0.22, 0.045, 'sine', 1040); this._tone(t + 0.06, 1560, 0.2, 0.03, 'sine', 2080); break;
         case 'error': this._tone(t, 330, 0.12, 0.07, 'triangle'); this._tone(t + 0.1, 262, 0.16, 0.07, 'triangle'); break;
         case 'launch':
           [523.25, 659.25, 783.99, 1046.5].forEach((f, i) => this._tone(t + i * 0.07, f, 0.9 - i * 0.12, 0.05));

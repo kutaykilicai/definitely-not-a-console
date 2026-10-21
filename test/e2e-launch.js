@@ -42,7 +42,8 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
       const ids = (await js('window.__ps5.items.map((x) => x.id)'));
       const idx = ids.indexOf('gece-surusu'); const cur = await js('window.__ps5.nav.row');
       const moves = Array(Math.abs(idx - cur)).fill(idx > cur ? 'right' : 'left');
-      await launchCase('launcher stub that exits at once ', [...moves, 'down', 'select'], 'gece-surusu', 4);
+      // Down on the game row now switches to the Xbox 360 menu; X (keyboard x) goes to the Oyna button.
+      await launchCase('launcher stub that exits at once ', [...moves, 'x', 'select'], 'gece-surusu', 4);
       const missing = await js('(async () => { const r = await window.ps5.launch("nope"); return r.ok; })()');
       check('unknown game id is rejected', missing === false);
       // Game manager through the same IPC the edit screen uses (the file pickers are native dialogs).

@@ -23,7 +23,16 @@ function makeId(title, taken) {
 }
 
 // Fields the manager is allowed to write; everything else on an entry is kept as it was.
-const EDITABLE = ['title', 'exe', 'args', 'workingDir', 'sceSys', 'losslessScaling', 'suspendInMenu', 'hidden', 'badge', 'description', 'section'];
+const EDITABLE = ['title', 'exe', 'args', 'workingDir', 'sceSys', 'losslessScaling', 'suspendInMenu', 'hidden', 'badge', 'description', 'section', 'console'];
+// Which console menu a game is shown in. Entries without the field (all older ones) are PS5 games;
+// a badge like "X360" also counts (renderer/consoles.js has the same rule).
+const XBOX_BADGE = /^(x360|xbox ?360|xb360)$/i;
+function consoleOf(g) {
+  const c = String((g && g.console) || '').toLowerCase().replace(/[^a-z0-9]/g, '');
+  if (c === 'x360' || c === 'xbox360' || c === 'xb360') return 'x360';
+  if (c) return 'ps5';
+  return XBOX_BADGE.test(String((g && g.badge) || '').trim()) ? 'x360' : 'ps5';
+}
 
 function saveEntry(doc, draft) {
   const games = doc.games || (doc.games = []);
@@ -40,6 +49,11 @@ function saveEntry(doc, draft) {
   if (!g.losslessScaling) delete g.losslessScaling;
   if (g.suspendInMenu !== false) delete g.suspendInMenu;   // on by default; only "off" is stored
   if (!g.hidden) delete g.hidden;
+  // Store the console only when it is not what the badge already says (keeps old files unchanged).
+  if ('console' in g) {
+    const want = consoleOf({ console: g.console }); delete g.console;
+    if (consoleOf(g) !== want) g.console = want;
+  }
   return g;
 }
 
@@ -149,4 +163,4 @@ function clearArt(assetsDir, id) {
   try { for (const n of fs.readdirSync(dir)) if (/^(icon|tile|background|bg|cover|logo)\.(png|jpe?g|webp)$/i.test(n)) fs.unlinkSync(path.join(dir, n)); } catch { /* none */ }
 }
 
-module.exports = { readJson, writeJson, slug, makeId, saveEntry, moveEntry, deleteEntry, deriveRoots, migrateLegacy, migrateConfigDir, storeArt, clearArt, EDITABLE };
+module.exports = { readJson, writeJson, slug, makeId, saveEntry, moveEntry, deleteEntry, deriveRoots, migrateLegacy, migrateConfigDir, storeArt, clearArt, consoleOf, EDITABLE };

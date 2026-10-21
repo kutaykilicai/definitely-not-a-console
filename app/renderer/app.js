@@ -5,6 +5,7 @@
   const stage = $('#stage');
   const api = window.ps5;
   const NAV = window.NAV, INPUT = window.INPUT, SOUND = window.SOUND, ICONS = window.ICONS, glyph = window.glyph;
+  const CONS = window.CONSOLES, X360 = window.X360, BOOT = window.BOOT;
   const qs = new URLSearchParams(location.search);
   const forced = qs.get('state') ? JSON.parse(qs.get('state')) : {};
   const CAPTURE = qs.get('capture') === '1';
@@ -25,6 +26,17 @@
   let escGuard = REOPEN === 'home' ? performance.now() + 1500 : 0;
   const timers = {};
   let lastMouse = 0; let moveTimes = [];
+  // Console menus: 'ps5' (this file's home screen) or 'x360' (renderer/x360). Up/down on the PS5
+  // game row (and at the top/bottom edge of the Xbox 360 grid) switches between them.
+  let consoleId = 'ps5';
+  let switching = false;
+  let freshVertical = true;
+  const guard = new CONS.SwitchGuard();
+  let xdash = null;
+  // Console boot intros (boot.js): once per app start for each console menu, never after a game.
+  const markPath = (ICONS.boot.match(/ d="([^"]+)"/) || [])[1];
+  const bootP = new BOOT.Player($('#boot'), { sound: SOUND, markPath });
+  const cOf = (g) => CONS.consoleOf(g);
   // Treat the mouse as in use only after real movement (several events), not a single synthetic move.
   const mouseLive = () => moveTimes.length >= 3 && performance.now() - lastMouse < 400;
 
@@ -69,7 +81,7 @@
   // ---------- items ----------
   function buildItems() {
     const tab = nav.tab;
-    const games = data.games.filter((g) => (g.section || 'games') === (tab === 'games' ? 'games' : 'media'));
+    const games = data.games.filter((g) => cOf(g) === 'ps5' && (g.section || 'games') === (tab === 'games' ? 'games' : 'media'));
     const manual = data.settings.rowOrder === 'manual';
     games.sort((a, b) => (manual ? 0 : (b.lastPlayed || 0) - (a.lastPlayed || 0)) || (a.order ?? 0) - (b.order ?? 0));
     const list = games.map((g) => ({ kind: 'game', id: g.id, g }));
@@ -80,7 +92,7 @@
     }
     return list;
   }
-  const libraryEmpty = () => !data.games.some((g) => (g.section || 'games') === 'games');
+  const libraryEmpty = () => !data.games.some((g) => cOf(g) === 'ps5' && (g.section || 'games') === 'games');
   const defaultRow = () => {
     if (nav.tab !== 'games') return 0;
     if (libraryEmpty()) return Math.max(0, items.findIndex((x) => x.kind === 'add'));
@@ -263,7 +275,8 @@
   function hints(list) {
     const h = $('#hints');
     if (!list) { h.classList.remove('on'); return; }
-    h.innerHTML = list.map(([k, l]) => `<span class="h">${glyph(k, inputMode)}<span>${esc(l)}</span></span>`).join('');
+    const gl = consoleId === 'x360' ? X360.glyph360 : glyph;
+    h.innerHTML = list.map(([k, l]) => `<span class="h">${gl(k, inputMode)}<span>${esc(l)}</span></span>`).join('');
     h.classList.add('on');
   }
   function pushOverlay(o) { overlays.push(o); $('#overlay').appendChild(o.el); o.render(); hints(o.hints || [['A', t('select')], ['B', t('back')]]); SOUND.play('menu'); }
@@ -383,10 +396,11 @@
     return t('artAuto');
   }
 
-  function editOverlay(g) {
+  function editOverlay(g, preset) {
     const ls = data.lossless && data.lossless.installed;
     const d = g ? { id: g.id, title: g.title, exe: g.exe || '', args: g.args || '', workingDir: g.workingDir || '', sceSys: g.sceSys || '', losslessScaling: !!g.losslessScaling, suspendInMenu: g.suspendInMenu !== false, hidden: !!g.hidden, badge: g.badge || '', artPaths: g.artPaths }
       : { title: '', exe: '', args: '', workingDir: '', sceSys: '', losslessScaling: false, suspendInMenu: true, badge: '' };
+    d.console = g ? cOf(g) : CONS.normalize((preset && preset.console) || consoleId);
     const pickExe = async () => {
       const r = await api.pick('exe', d.exe); if (!r) return;
       if (r.error) { toast(t('fExe'), r.error); return; }
@@ -432,6 +446,7 @@
         { label: t('fArgs'), icon: ICONS.edit, value: d.args || '-', stay: true, run: () => textDialog(t('fArgs'), d.args, (v) => { d.args = v; o.render(); }) },
         { label: t('fDir'), icon: ICONS.folder, value: d.workingDir ? baseName(d.workingDir) : t('exeFolder'), stay: true, run: dirMenu },
         { label: t('fArt'), icon: ICONS.image, value: artLabel(d), stay: true, run: artMenu },
+        { label: t('fConsole'), icon: ICONS.pad, value: (CONS.CONSOLES.find((c) => c.id === d.console) || CONS.CONSOLES[0]).name, stay: true, run: () => { d.console = CONS.neighbour(d.console, 'down'); o.render(); } },
         ls ? { label: t('fLs'), icon: ICONS.desktop, value: d.losslessScaling ? t('on') : t('off'), stay: true, run: () => { d.losslessScaling = !d.losslessScaling; o.render(); } }
           : { label: t('lsMissing'), icon: ICONS.info, value: '', stay: true, run: () => toast(t('lsMissing'), t('lsMissingHint')) },
         { label: t('fSuspend'), icon: ICONS.pad, value: d.suspendInMenu ? t('on') : t('off'), stay: true, run: () => { d.suspendInMenu = !d.suspendInMenu; o.render(); if (!d.suspendInMenu) toast(t('fSuspend'), t('fSuspendOffHint')); } },
@@ -483,9 +498,9 @@
     pushOverlay(o);
   }
 
-  function libraryOverlay() {
+  function libraryOverlay(order) {
     const el = document.createElement('div'); el.className = 'full';
-    const games = data.games.slice().sort((a, b) => a.title.localeCompare(b.title, 'tr'));
+    const games = data.games.filter((g) => cOf(g) === consoleId).sort((a, b) => (order === 'recent' ? (b.lastPlayed || 0) - (a.lastPlayed || 0) : 0) || a.title.localeCompare(b.title, 'tr'));
     el.innerHTML = `<h1>${esc(t('library'))}</h1><div class="grid"></div>`;
     const grid = el.querySelector('.grid');
     const o = { el, index: 0, hints: [['A', t('play')], ['menu', t('options')], ['B', t('back')]] };
@@ -514,6 +529,7 @@
       { label: 'Dil / Language', icon: ICONS.info, value: st.language === 'en' ? 'English' : 'Türkçe', stay: true, run: () => set('language', data.settings.language === 'en' ? 'tr' : 'en').then(() => { refresh(); const top = overlays[overlays.length - 1]; if (top) { top.el.querySelector('h1').textContent = t('settings'); hints([['A', t('select')], ['B', t('back')]]); } }) },
       { label: t('userFolder'), icon: ICONS.folder, stay: true, run: () => api.open('user-assets') },
       { label: t('sounds'), icon: ICONS.check, value: st.sounds ? t('on') : t('off'), stay: true, run: () => set('sounds', !data.settings.sounds) },
+      { label: t('bootIntro'), icon: ICONS.info, value: st.bootIntro === 'off' ? t('bootOff') : t('bootOnce'), stay: true, run: () => set('bootIntro', data.settings.bootIntro === 'off' ? 'once' : 'off') },
       { label: t('introScreen'), icon: ICONS.info, value: introLabel(st.intro), stay: true, run: () => set('intro', intros[(intros.indexOf(data.settings.intro) + 1) % 3]) },
       { label: t('autostart'), icon: ICONS.power, value: st.autostart ? t('on') : t('off'), stay: true, run: () => set('autostart', !data.settings.autostart) },
       { label: t('fullscreen'), icon: ICONS.desktop, value: st.fullscreen !== false ? t('on') : t('off'), stay: true, run: () => set('fullscreen', data.settings.fullscreen === false) },
@@ -637,11 +653,116 @@
     else if (it.kind === 'add') { SOUND.play('select'); editOverlay(null); }
   }
 
+  // ---------- console menus (PS5 <-> Xbox 360) ----------
+  const SWITCH_MS = 520;
+  function x360Action(kind, tile) {
+    const g = tile && tile.game;
+    if (kind === 'game' && g) launch(g);
+    else if (kind === 'menu' && g) gameMenu(g, 'x360');
+    else if (kind === 'add') { SOUND.play('select'); editOverlay(null, { console: 'x360' }); }
+    else if (kind === 'library' || kind === 'allgames' || kind === 'search') { SOUND.play('select'); libraryOverlay(); }
+    else if (kind === 'recent') { SOUND.play('select'); libraryOverlay('recent'); }
+    else if (kind === 'ps5') switchConsole('down', 'ps5');
+    else if (kind === 'desktop') { SOUND.play('select'); api.window('minimize'); }
+    else if (kind === 'settings') { SOUND.play('select'); settingsOverlay(); }
+    else if (kind === 'power') { SOUND.play('select'); powerMenu(); }
+    else if (kind === 'manage') { SOUND.play('select'); manageOverlay(); }
+    else if (kind === 'exit') { SOUND.play('select'); api.window('quit'); }
+  }
+  function ensureX360() {
+    if (xdash) return xdash;
+    xdash = new X360.Dash({
+      el: $('#x360'), t, api, sound: SOUND, glyphMode: () => inputMode, lang: () => (data.settings.language === 'en' ? 'en' : 'tr'),
+      running: () => running,
+      onConsole: (dir) => { if (freshVertical) switchConsole(dir); },
+      action: x360Action,
+    });
+    return xdash;
+  }
+  function buildX360() { if (consoleId === 'x360' || xdash) ensureX360().build({ ...data, games: data.games.map((g) => ({ ...g, _console: cOf(g) })) }, data.settings.x360Scene || null); }
+  function applyConsole() {
+    stage.classList.toggle('c-x360', consoleId === 'x360');
+    if (consoleId === 'x360') buildX360();
+    // Build the other menu in the background once the PS5 menu is up, so the first switch only animates.
+    else setTimeout(() => { if (!xdash) { ensureX360(); buildX360(); } }, 1200);
+  }
+  // Both menus live in this window: the outgoing one slides away and fades while the incoming one
+  // slides in from the side the user pressed towards. No window is closed or reopened.
+  function bootWanted(kind) {
+    return data.settings.bootIntro !== 'off' && !REOPEN && !running && !(CAPTURE && !forced.bootPlay) && !(data.boot && data.boot.shown && data.boot.shown[kind]);
+  }
+  function playBoot(kind, opts = {}) {
+    if (data.boot) data.boot.shown = { ...(data.boot.shown || {}), [kind]: true };
+    if (api.bootShown) api.bootShown(kind);
+    const files = (data.boot && data.boot.files && data.boot.files[kind]) || {};
+    return bootP.play(kind, files, { volume: SOUND.volume, muted: !SOUND.enabled, text: t('bootWarn'), ...opts });
+  }
+  // The first time a console menu comes up in this run its boot intro plays first: it covers the
+  // screen, the menu is switched underneath without the slide, and the intro fades into it.
+  function bootSwitch(to) {
+    switching = true; guard.start(performance.now(), SWITCH_MS);
+    if (to === 'x360' && !xdash) { ensureX360(); buildX360(); }
+    playBoot(to, { fadeIn: 260, onCovered: () => {
+      consoleId = to;
+      stage.classList.toggle('c-x360', to === 'x360');
+      if (to === 'ps5') { layoutRow(true); applyZone(); } else if (xdash) xdash.layout(true);
+      api.saveState({ console: to });
+      window.__ps5switches = (window.__ps5switches || 0) + 1;
+    } }).then(() => { switching = false; guard.start(performance.now(), 0); });
+  }
+  function switchConsole(dir, target) {
+    const to = target || CONS.neighbour(consoleId, dir);
+    if (switching || to === consoleId) return;
+    const now = performance.now();
+    if (guard.busy(now)) return;
+    if (bootWanted(to)) { bootSwitch(to); return; }
+    switching = true; guard.start(now, SWITCH_MS);
+    if (to === 'x360' && !xdash) { ensureX360(); buildX360(); }
+    const fromEl = consoleId === 'x360' ? $('#x360') : $('#ps5view');
+    const toEl = to === 'x360' ? $('#x360') : $('#ps5view');
+    const off = 300 * (dir === 'up' ? 1 : -1);  // up: the new menu comes down from above
+    stage.classList.add('c-anim');
+    SOUND.play('switch');
+    const ease = 'cubic-bezier(0.25, 0.85, 0.3, 1)';
+    const ms = forced.switchMs || SWITCH_MS;
+    // The Xbox 360 layer is opaque and sits above the PS5 one, so only its opacity animates; that
+    // gives the same crossfade while the PS5 layer (blur/backdrop effects inside) is only moved.
+    const fade = (el, o0, o1) => (el.id === 'x360' ? { opacity: [o0, o1] } : {});
+    const a1 = fromEl.animate({ transform: ['translateY(0px)', `translateY(${fromEl.id === 'x360' ? off : 0}px)`], ...fade(fromEl, 1, 0) }, { duration: ms, easing: ease, fill: 'forwards' });
+    const a2 = toEl.animate({ transform: [`translateY(${toEl.id === 'x360' ? -off : 0}px)`, 'translateY(0px)'], ...fade(toEl, 0, 1) }, { duration: ms, easing: ease, fill: 'forwards' });
+    consoleId = to;
+    stage.classList.toggle('c-x360', to === 'x360');
+    if (to === 'ps5') { layoutRow(true); applyZone(); }
+    api.saveState({ console: to });
+    window.__ps5switches = (window.__ps5switches || 0) + 1;
+    a2.finished.catch(() => {}).then(() => {
+      a1.cancel(); a2.cancel();
+      stage.classList.remove('c-anim');
+      switching = false;
+    });
+  }
+
   function dispatch(a) {
     if (!data) return;
+    // During a boot intro: A/Enter (and the other buttons) skip it, directions are swallowed. A held
+    // up/down still counts for the switch guard, so its key repeat cannot switch again afterwards.
+    if (bootP.on) {
+      if (a === 'up' || a === 'down') guard.press(performance.now());
+      else if (['select', 'back', 'home', 'options', 'any', 'x', 'y'].includes(a)) bootP.skip();
+      return;
+    }
     if ($('#intro').classList.contains('on')) { if (['select', 'home', 'back', 'options'].includes(a) || a === 'any') dismissIntro(); return; }
     if (a === 'home') { closeAll(); }
     if (overlays.length) { overlays[overlays.length - 1].input(a); return; }
+    if (a === 'up' || a === 'down') freshVertical = guard.press(performance.now());
+    if (switching) return;
+    if (consoleId === 'x360') { ensureX360().input(a); return; }
+    // PS5 home: up/down on the game row switches to the next console menu. The top bar and the
+    // Play/"…"/cards area stay reachable with Y (top bar) and X (Play button), and as before
+    // with the mouse; inside those areas up/down keep their old meaning.
+    if (nav.zone === 'row' && (a === 'up' || a === 'down')) { if (freshVertical) switchConsole(a); return; }
+    if (nav.zone === 'row' && a === 'y') { nav.zone = 'top'; nav.top = nav.tab === 'games' ? 0 : 1; SOUND.play('focus'); applyZone(); return; }
+    if (nav.zone === 'row' && a === 'x' && items.length) { nav.zone = 'actions'; nav.action = 0; SOUND.play('focus'); applyZone(); return; }
     const ctx = { rowLen: items.length, kind: (i) => (items[i] ? items[i].kind : 'game'), cardsLen: 3 };
     const prevZone = nav.zone;
     const { state, fx } = NAV.reduce(nav, a, ctx);
@@ -676,6 +797,7 @@
     let hideT = 0;
     window.addEventListener('mousemove', (e) => { if (e.movementX || e.movementY) { const n = performance.now(); lastMouse = n; moveTimes = moveTimes.filter((x) => n - x < 500); moveTimes.push(n); } document.body.classList.remove('nocursor'); clearTimeout(hideT); hideT = setTimeout(() => document.body.classList.add('nocursor'), 2500); });
     $('#intro').addEventListener('click', () => dismissIntro());
+    $('#boot').addEventListener('click', () => bootP.skip());
   }
 
   // ---------- input ----------
@@ -774,6 +896,7 @@
     const idx = items.findIndex((x) => x.id === keep);
     nav.row = idx >= 0 ? idx : Math.min(nav.defaultRow, Math.max(0, items.length - 1));
     renderRow(); onFocusChanged(true); applyZone();
+    buildX360();
   }
 
   api.on('game-started', (d) => { if (!d || !d.seamless) setTimeout(() => launchScreen('black'), 400); });
@@ -802,12 +925,26 @@
     SOUND.startAmbient(true);
   });
 
+  // Capture mode: one still frame of a boot intro at forced.boot.t seconds (reference comparison).
+  async function bootFrame(b) {
+    const el = $('#boot'); el.className = 'on'; el.innerHTML = '<canvas width="1920" height="1080"></canvas>';
+    const files = (data.boot && data.boot.files && data.boot.files[b.kind]) || {};
+    const logo = await BOOT.loadImage(b.logo === false ? null : files.logo);
+    BOOT.frame(b.kind, el.firstChild.getContext('2d'), b.t || 0, { logo, text: t('bootWarn') });
+  }
+
   async function main() {
     data = await api.init();
     running = data.running; paused = !!data.paused;
     applySettings(); loadFonts(data.user.fonts);
+    // The user's console logos (intro folder): the PS symbol for the press screen emblem (unless
+    // assets\boot.png is there), the Xbox 360 sphere for the guide button glyph.
+    const lf = (data.boot && data.boot.files) || {};
+    if (lf.ps5 && lf.ps5.logo && !data.user.boot) data.user.boot = (await BOOT.markUrl(lf.ps5.logo, 'ps5').catch(() => null)) || null;
+    if (lf.x360 && lf.x360.logo) X360.setHomeMark(await BOOT.markUrl(lf.x360.logo, 'x360').catch(() => null));
     SOUND.loadUser(data.user.sounds);
     if (forced.tab) nav.tab = forced.tab;
+    consoleId = CONS.normalize(forced.console || (data.state && data.state.console));
     if (forced.scrim === false) stage.classList.add('noscrim');
     refresh((REOPEN && data.running) || (data.state && data.state.focusId));
     if (forced.row != null) { nav.row = forced.row; onFocusChanged(true); }
@@ -816,8 +953,20 @@
     if (forced.overlay === 'settings') settingsOverlay();
     if (forced.overlay === 'library') libraryOverlay();
     if (forced.inputMode) setMode(forced.inputMode);
+    applyConsole();
+    if (forced.x360 && xdash) { const x = forced.x360; if (x.panel != null) xdash.nav.panel = x.panel; if (x.focus != null) xdash.nav.focus[xdash.nav.panel] = x.focus; xdash.layout(true); }
+    if (forced.switchTo) setTimeout(() => switchConsole(forced.switchTo), 50);
     wireMouse(); clock(); setInterval(clock, 1000);
-    const intro = REOPEN ? 'none' : (forced.intro || data.settings.intro);
+    if (forced.boot) await bootFrame(forced.boot);
+    let bootVideo = false;
+    if (!forced.boot && bootWanted(consoleId)) {
+      const f = data.boot && data.boot.files && data.boot.files[consoleId];
+      // A user's PS5 video already ends on the console's own "press the button" screen, so the
+      // menu's press screen is not shown a second time after it.
+      bootVideo = consoleId === 'ps5' && !!(f && f.video);
+      playBoot(consoleId);
+    }
+    const intro = REOPEN || bootVideo ? 'none' : (forced.intro || data.settings.intro);
     if (intro === 'press') startIntro();
     requestAnimationFrame(() => $('#blackout').classList.add('off'));
     if (intro === 'none' || CAPTURE) { const bo = $('#blackout'); bo.style.transition = 'none'; bo.classList.add('off'); }
@@ -831,6 +980,7 @@
       try { await api.capture(); } finally { api.captureDone(); }
     }
     window.__ps5 = { dispatch, get nav() { return nav; }, get items() { return items; }, get overlays() { return overlays.length; },
+      get console() { return consoleId; }, get boot() { return bootP.on ? bootP.active.kind : null; }, skipBoot: () => bootP.skip(), get switching() { return switching; }, get x360() { return xdash && xdash.current(); },
       launchScreen: (mode, id) => launchScreen(mode, data.games.find((g) => g.id === id)) };
   }
   main().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<pre style="position:fixed;left:20px;top:20px;color:#f88;z-index:99;font:16px monospace;white-space:pre-wrap">${esc(e.stack || e)}</pre>`); });
