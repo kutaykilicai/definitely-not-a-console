@@ -17,12 +17,13 @@ ok('console field and X360 badge pick the Xbox 360 menu', () => {
   assert.equal(CONS.consoleOf({ console: 'nonsense' }), 'ps5');
 });
 ok('renderer and library agree on consoleOf', () => {
-  const cases = [{}, { badge: 'X360' }, { console: 'x360' }, { console: 'ps5', badge: 'X360' }, { badge: 'PS3' }, { console: 'xbox360' }];
+  const cases = [{}, { badge: 'X360' }, { console: 'x360' }, { console: 'ps5', badge: 'X360' }, { badge: 'PS3' }, { console: 'xbox360' }, { console: 'switch' }, { console: 'Nintendo Switch' }, { badge: 'Switch' }, { console: 'ps5', badge: 'NSW' }];
   for (const g of cases) assert.equal(LIB.consoleOf(g), CONS.consoleOf(g), JSON.stringify(g));
 });
-ok('up/down wrap between the two menus', () => {
-  assert.equal(CONS.neighbour('ps5', 'up'), 'x360'); assert.equal(CONS.neighbour('ps5', 'down'), 'x360');
-  assert.equal(CONS.neighbour('x360', 'up'), 'ps5'); assert.equal(CONS.neighbour('x360', 'down'), 'ps5');
+ok('previous/next cycle PS5 -> Xbox 360 -> Switch -> PS5', () => {
+  assert.equal(CONS.neighbour('ps5', 'down'), 'x360'); assert.equal(CONS.neighbour('x360', 'down'), 'switch'); assert.equal(CONS.neighbour('switch', 'down'), 'ps5');
+  assert.equal(CONS.neighbour('ps5', 'up'), 'switch'); assert.equal(CONS.neighbour('switch', 'up'), 'x360'); assert.equal(CONS.neighbour('x360', 'up'), 'ps5');
+  assert.equal(CONS.normalize('switch'), 'switch');
   assert.equal(CONS.normalize(undefined), 'ps5'); assert.equal(CONS.normalize('x360'), 'x360'); assert.equal(CONS.normalize('dc'), 'ps5');
 });
 ok('switch guard: held key repeats and presses during the animation do not switch', () => {

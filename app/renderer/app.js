@@ -5,7 +5,7 @@
   const stage = $('#stage');
   const api = window.ps5;
   const NAV = window.NAV, INPUT = window.INPUT, SOUND = window.SOUND, ICONS = window.ICONS, glyph = window.glyph;
-  const CONS = window.CONSOLES, X360 = window.X360, BOOT = window.BOOT;
+  const CONS = window.CONSOLES, X360 = window.X360, NSW = window.NSW, BOOT = window.BOOT;
   const qs = new URLSearchParams(location.search);
   const forced = qs.get('state') ? JSON.parse(qs.get('state')) : {};
   const CAPTURE = qs.get('capture') === '1';
@@ -34,6 +34,7 @@
   let switching = false;
   const guard = new CONS.SwitchGuard();
   let xdash = null;
+  let ndash = null;   // Nintendo Switch HOME Menu (renderer/switch)
   // Console boot intros (boot.js): once per app start for each console menu, never after a game.
   const markPath = (ICONS.boot.match(/ d="([^"]+)"/) || [])[1];
   const bootP = new BOOT.Player($('#boot'), { sound: SOUND, markPath });
@@ -60,7 +61,7 @@
     const vis = window.innerWidth / z, w = Math.max(1920 * 0.75, vis), xo = (Math.min(w, vis) - 1920) / 2;
     stage.style.setProperty('--xo', `${xo}px`); stage.style.setProperty('--xr', `${Math.max(xo, -96) + (w - vis)}px`); stage.style.setProperty('--xvis', `${vis}`);
   }
-  window.addEventListener('resize', () => { fit(); layoutRow(); if (xdash) xdash.layout(true); });
+  window.addEventListener('resize', () => { fit(); layoutRow(); if (xdash) xdash.layout(true); if (ndash) ndash.layout(true); });
   fit();
 
   function fmtDuration(sec) {
@@ -252,6 +253,7 @@
   const themeOn = () => data && data.settings.theme !== false && !CAPTURE_PLAIN;
   function focusedGame() {
     if (consoleId === 'x360') { const c = xdash && xdash.current(); return c && c.tile && c.tile.kind === 'game' ? c.tile.game : null; }
+    if (consoleId === 'switch') return ndash ? ndash.currentGame() : null;
     const it = cur(); return it && it.kind === 'game' ? it.g : null;
   }
   function themeFocus(now) {
@@ -307,7 +309,7 @@
   function hints(list) {
     const h = $('#hints');
     if (!list) { h.classList.remove('on'); return; }
-    const gl = consoleId === 'x360' ? X360.glyph360 : glyph;
+    const gl = consoleId === 'x360' ? X360.glyph360 : consoleId === 'switch' ? NSW.glyphNs : glyph;
     h.innerHTML = list.map(([k, l]) => `<span class="h">${gl(k, inputMode)}<span>${esc(l)}</span></span>`).join('');
     h.classList.add('on');
   }
@@ -474,6 +476,19 @@
       } },
       { label: t('artUseIcon'), icon: ICONS.pad, run: () => { d.sceSys = ''; d.clearArt = true; delete d.iconFile; delete d.backgroundFile; o.render(); } },
     ] }));
+    // Eden (Switch emulator): eden.exe -f -g "<game file>", started in Eden's own folder.
+    const edenTemplate = async () => {
+      let info = await api.pick('edenInfo');
+      if (!info || !info.exists) {
+        toast(t('edenTemplate'), t('edenPickExe'));
+        const r = await api.pick('eden', info && info.dir); if (!r || !r.path) return;
+        info = { exe: r.path, dir: r.path.replace(/[\\/][^\\/]+$/, '') };
+      }
+      const gf = await api.pick('switchgame'); if (!gf || !gf.path) return;
+      d.exe = info.exe; d.args = `-f -g "${gf.path}"`; d.workingDir = info.dir; d.console = 'switch';
+      if (!d.title) d.title = gf.title || '';
+      o.render();
+    };
     const dirMenu = () => pushOverlay(listOverlay({ style: { left: '560px', top: '380px' }, entries: [
       { label: t('dirPick'), icon: ICONS.folder, run: async () => { const r = await api.pick('folder', d.workingDir || d.exe); if (r && r.path) { d.workingDir = r.path; o.render(); } } },
       { label: t('dirReset'), icon: ICONS.check, run: () => { d.workingDir = ''; o.render(); } },
@@ -510,6 +525,7 @@
     const entries = () => {
       const list = [
         { label: t('fExe'), icon: ICONS.folder, value: d.exe ? baseName(d.exe) : t('empty'), stay: true, run: pickExe },
+        ...(d.console === 'switch' ? [{ label: t('edenTemplate'), icon: ICONS.pad, value: /eden[^\\/]*\.exe$/i.test(d.exe) ? t('on') : '', stay: true, run: edenTemplate }] : []),
         { label: t('fName'), icon: ICONS.edit, value: d.title || t('empty'), stay: true, run: () => textDialog(t('fName'), d.title, (v) => { d.title = v; o.render(); }) },
         { label: t('fArgs'), icon: ICONS.edit, value: d.args || '-', stay: true, run: () => textDialog(t('fArgs'), d.args, (v) => { d.args = v; o.render(); }) },
         { label: t('fDir'), icon: ICONS.folder, value: d.workingDir ? baseName(d.workingDir) : t('exeFolder'), stay: true, run: dirMenu },
@@ -605,6 +621,7 @@
       { label: t('themeMusic'), icon: ICONS.music || ICONS.check, value: st.themeMusic !== false ? t('on') : t('off'), stay: true, run: () => set('themeMusic', data.settings.themeMusic === false) },
       { label: t('themeVolume'), icon: ICONS.music || ICONS.check, value: `%${Math.round((st.themeVolume ?? 0.5) * 100)}`, stay: true, run: () => { const v = [0.2, 0.35, 0.5, 0.7, 0.85, 1]; const i = v.findIndex((x) => x > (data.settings.themeVolume ?? 0.5) + 0.01); set('themeVolume', v[i < 0 ? 0 : i]); } },
       { label: t('themeOn'), icon: ICONS.image, value: st.theme !== false ? t('on') : t('off'), stay: true, run: () => set('theme', data.settings.theme === false).then(() => { themeFocus(true); if (xdash) xdash.applyTheme(true); }) },
+      { label: t('switchTheme'), icon: ICONS.image, value: st.switchTheme === 'black' ? t('switchBlack') : t('switchWhite'), stay: true, run: () => set('switchTheme', data.settings.switchTheme === 'black' ? 'white' : 'black').then(() => { stageFor(consoleId); if (ndash) ndash.render(); }) },
       { label: t('stats'), icon: ICONS.chart || ICONS.clock, stay: true, run: () => statsOverlay() },
       { label: t('updates'), icon: ICONS.update || ICONS.check, value: updCount() ? t('updCount', { n: updCount() }) : '', stay: true, run: () => updatesOverlay() },
       { label: t('bootIntro'), icon: ICONS.info, value: st.bootIntro === 'off' ? t('bootOff') : t('bootOnce'), stay: true, run: () => set('bootIntro', data.settings.bootIntro === 'off' ? 'once' : 'off') },
@@ -628,9 +645,10 @@
   // ---------- controller battery ----------
   // XInput gives a type (1 wired, 2 alkaline, 3 NiMH, 255 unknown) and a level 0..3 (empty, low,
   // medium, full), no percentage. Wired / unknown pads show nothing; level 0 warns once per pad.
-  const batWarned = new Set(); let lastPads = [];
+  const batWarned = new Set(); let lastPads = []; let lastPadsAll = null;
   function padBattery(b) {
     const el = $('#padbat'); if (!el) return;
+    lastPadsAll = (b && b.pads) || []; if (ndash) ndash.setPads(lastPadsAll);
     const pads = ((b && b.pads) || []).filter((p) => (p.type === 2 || p.type === 3) && p.level >= 0 && p.level <= 3);
     lastPads = pads;
     if (!pads.length || data.settings.padBattery === false || CAPTURE) { el.classList.remove('on'); el.innerHTML = ''; return; }
@@ -769,6 +787,7 @@
   // after a background check: a quiet toast for releases not announced before (never during a game)
   function onUpdatesChanged(v) {
     upd = v; overlays.forEach((x) => (x.kind === 'updates' || x.kind === 'port') && x.render && x.render());
+    if (ndash) ndash.setBadge('updates', updCount() > 0);
     if (running || CAPTURE || !v || v.job) return;
     const seen = (data.state && data.state.updSeen) || {}; let changed = false;
     for (const r of v.results || []) if (r.status === 'update' && seen[r.id] !== r.latest) { const pp = (v.ports || []).find((p) => p.id === r.id); toast(t('updToast', { name: pp ? pp.title : r.id, ver: r.latest }), ''); seen[r.id] = r.latest; changed = true; break; }
@@ -913,13 +932,50 @@
     return xdash;
   }
   function buildX360() { if (consoleId === 'x360' || xdash) ensureX360().build({ ...data, games: data.games.map((g) => ({ ...g, _console: cOf(g) })) }, data.settings.x360Scene || null); }
-  function applyConsole() {
-    stage.classList.toggle('c-x360', consoleId === 'x360');
-    if (consoleId === 'x360') buildX360();
-    // Build the other menu in the background once the PS5 menu is up, so the first switch only animates.
-    else setTimeout(() => { if (!xdash) { ensureX360(); buildX360(); } }, 1200);
+  // ---------- Nintendo Switch HOME Menu ----------
+  function nswAction(kind, x) {
+    const g = x && x.game;
+    if (kind === 'game' && g) launch(g);
+    else if (kind === 'menu' && g) gameMenu(g, 'switch');
+    else if (kind === 'library') { SOUND.play('select'); libraryOverlay(); }
+    else if (kind === 'stats' || kind === 'user') { SOUND.play('select'); statsOverlay(); }
+    else if (kind === 'add') { SOUND.play('select'); editOverlay(null, { console: 'switch' }); }
+    else if (kind === 'desktop') { SOUND.play('select'); api.window('minimize'); }
+    else if (kind === 'consoles') {
+      SOUND.play('select');
+      choiceDialog({ title: t('nswConsoles'), options: [{ label: 'PlayStation 5', run: () => setTimeout(() => switchConsole('down', 'ps5'), 60) }, { label: 'Xbox 360', run: () => setTimeout(() => switchConsole('up', 'x360'), 60) }, { label: t('cancel') }], cancel: 2 });
+    } else if (kind === 'manage') { SOUND.play('select'); manageOverlay(); }
+    else if (kind === 'updates') { SOUND.play('select'); updatesOverlay(); }
+    else if (kind === 'settings') { SOUND.play('select'); settingsOverlay(); }
+    else if (kind === 'power') { SOUND.play('select'); powerMenu(); }
   }
-  // Both menus live in this window: the outgoing one slides away and fades while the incoming one
+  function ensureNsw() {
+    if (ndash) return ndash;
+    ndash = new NSW.Home({
+      el: $('#nsw'), t, sound: SOUND, glyphMode: () => inputMode, lang: () => (data.settings.language === 'en' ? 'en' : 'tr'),
+      running: () => running, action: nswAction, onFocus: () => themeFocus(false), theme: () => themeOn(),
+    });
+    if (lastPadsAll) ndash.setPads(lastPadsAll);
+    if (upd) ndash.setBadge('updates', updCount() > 0);
+    return ndash;
+  }
+  function buildNsw() { if (consoleId === 'switch' || ndash) ensureNsw().build({ ...data, games: data.games.map((g) => ({ ...g, _console: cOf(g) })) }, data.settings.switchScene || null); }
+  const LAYERS = { ps5: '#ps5view', x360: '#x360', switch: '#nsw' };
+  const layerEl = (id) => $(LAYERS[id] || '#ps5view');
+  function stageFor(id) {
+    stage.classList.toggle('c-x360', id === 'x360');
+    stage.classList.toggle('c-switch', id === 'switch');
+    stage.classList.toggle('n-black', id === 'switch' && data.settings.switchTheme === 'black');
+  }
+  function ensureFor(to) { if (to === 'x360' && !xdash) { ensureX360(); buildX360(); } if (to === 'switch' && !ndash) { ensureNsw(); buildNsw(); } }
+  function applyConsole() {
+    stageFor(consoleId);
+    if (consoleId === 'x360') buildX360();
+    if (consoleId === 'switch') buildNsw();
+    // Build the other menus in the background once this one is up, so the first switch only animates.
+    setTimeout(() => { if (!xdash) { ensureX360(); buildX360(); } if (!ndash) { ensureNsw(); buildNsw(); } }, 1200);
+  }
+  // All menus live in this window: the outgoing one slides away and fades while the incoming one
   // slides in from the side the user pressed towards. No window is closed or reopened.
   function bootWanted(kind) {
     return data.settings.bootIntro !== 'off' && !REOPEN && !running && !(CAPTURE && !forced.bootPlay) && !(data.boot && data.boot.shown && data.boot.shown[kind]);
@@ -934,11 +990,11 @@
   // screen, the menu is switched underneath without the slide, and the intro fades into it.
   function bootSwitch(to) {
     switching = true; guard.start(performance.now(), SWITCH_MS);
-    if (to === 'x360' && !xdash) { ensureX360(); buildX360(); }
+    ensureFor(to);
     playBoot(to, { fadeIn: 260, onCovered: () => {
       consoleId = to;
-      stage.classList.toggle('c-x360', to === 'x360');
-      if (to === 'ps5') { layoutRow(true); applyZone(); } else if (xdash) xdash.layout(true);
+      stageFor(to);
+      if (to === 'ps5') { layoutRow(true); applyZone(); } else if (to === 'x360' && xdash) xdash.layout(true); else if (to === 'switch' && ndash) ndash.layout(true);
       api.saveState({ console: to });
       window.__ps5switches = (window.__ps5switches || 0) + 1;
     } }).then(() => { switching = false; guard.start(performance.now(), 0); });
@@ -950,26 +1006,34 @@
     if (guard.busy(now)) return;
     if (bootWanted(to)) { bootSwitch(to); return; }
     switching = true; guard.start(now, SWITCH_MS);
-    if (to === 'x360' && !xdash) { ensureX360(); buildX360(); }
-    const fromEl = consoleId === 'x360' ? $('#x360') : $('#ps5view');
-    const toEl = to === 'x360' ? $('#x360') : $('#ps5view');
+    ensureFor(to);
+    const fromEl = layerEl(consoleId);
+    const toEl = layerEl(to);
+    // menus not taking part stay hidden during the slide
+    const others = Object.keys(LAYERS).filter((k) => k !== consoleId && k !== to).map(layerEl);
+    others.forEach((e) => { e.style.visibility = 'hidden'; });
     const off = 300 * (dir === 'up' ? 1 : -1);  // up: the new menu comes down from above
     stage.classList.add('c-anim');
     SOUND.play('switch');
     const ease = 'cubic-bezier(0.25, 0.85, 0.3, 1)';
     const ms = forced.switchMs || SWITCH_MS;
-    // The Xbox 360 layer is opaque and sits above the PS5 one, so only its opacity animates; that
-    // gives the same crossfade while the PS5 layer (blur/backdrop effects inside) is only moved.
-    const fade = (el, o0, o1) => (el.id === 'x360' ? { opacity: [o0, o1] } : {});
-    const a1 = fromEl.animate({ transform: ['translateY(0px)', `translateY(${fromEl.id === 'x360' ? off : 0}px)`], ...fade(fromEl, 1, 0) }, { duration: ms, easing: ease, fill: 'forwards' });
-    const a2 = toEl.animate({ transform: [`translateY(${toEl.id === 'x360' ? -off : 0}px)`, 'translateY(0px)'], ...fade(toEl, 0, 1) }, { duration: ms, easing: ease, fill: 'forwards' });
+    // The Xbox 360 and Switch layers are opaque and sit above the PS5 one, so only their opacity
+    // animates; that gives the same crossfade while the PS5 layer (blur/backdrop effects inside) is
+    // only moved. Between the two opaque layers the incoming one is drawn on top.
+    const opaque = (el) => el.id !== 'ps5view';
+    const fade = (el, o0, o1) => (opaque(el) ? { opacity: [o0, o1] } : {});
+    if (opaque(fromEl) && opaque(toEl)) { toEl.style.zIndex = '7'; }
+    const a1 = fromEl.animate({ transform: ['translateY(0px)', `translateY(${opaque(fromEl) ? off : 0}px)`], ...fade(fromEl, 1, opaque(toEl) ? 1 : 0) }, { duration: ms, easing: ease, fill: 'forwards' });
+    const a2 = toEl.animate({ transform: [`translateY(${opaque(toEl) ? -off : 0}px)`, 'translateY(0px)'], ...fade(toEl, 0, 1) }, { duration: ms, easing: ease, fill: 'forwards' });
     consoleId = to;
-    stage.classList.toggle('c-x360', to === 'x360');
+    stageFor(to);
     if (to === 'ps5') { layoutRow(true); applyZone(); }
     api.saveState({ console: to });
     window.__ps5switches = (window.__ps5switches || 0) + 1;
     a2.finished.catch(() => {}).then(() => {
       a1.cancel(); a2.cancel();
+      toEl.style.zIndex = '';
+      others.forEach((e) => { e.style.visibility = ''; });
       stage.classList.remove('c-anim');
       switching = false;
     });
@@ -994,6 +1058,7 @@
     if (overlays.length) { overlays[overlays.length - 1].input(a); return; }
     if (switching) return;
     if (consoleId === 'x360') { ensureX360().input(a); return; }
+    if (consoleId === 'switch') { ensureNsw().input(a); return; }
     const ctx = { rowLen: items.length, kind: (i) => (items[i] ? items[i].kind : 'game'), cardsLen: 3 };
     const prevZone = nav.zone;
     const { state, fx } = NAV.reduce(nav, a, ctx);
@@ -1132,7 +1197,7 @@
     const idx = items.findIndex((x) => x.id === keep);
     nav.row = idx >= 0 ? idx : Math.min(nav.defaultRow, Math.max(0, items.length - 1));
     renderRow(); onFocusChanged(true); applyZone();
-    buildX360();
+    buildX360(); buildNsw();
   }
 
   api.on('game-started', (d) => { if (!d || !d.seamless) setTimeout(() => launchScreen('black'), 400); });
@@ -1205,6 +1270,7 @@
     if (forced.overlay === 'library') libraryOverlay();
     if (forced.inputMode) setMode(forced.inputMode);
     applyConsole();
+    if (forced.nsw && ndash) { const x = forced.nsw; ndash.nav = { ...ndash.nav, row: x.row || ndash.nav.row, i: { ...ndash.nav.i, ...(x.i || {}) } }; ndash.layout(true); }
     if (forced.x360 && xdash) { const x = forced.x360; if (x.panel != null) xdash.nav.panel = x.panel; if (x.focus != null) xdash.nav.focus[xdash.nav.panel] = x.focus; xdash.layout(true); }
     if (forced.switchTo) setTimeout(() => switchConsole(forced.switchTo), 50);
     wireMouse(); clock(); setInterval(clock, 1000);
@@ -1231,7 +1297,7 @@
       try { await api.capture(); } finally { api.captureDone(); }
     }
     window.__ps5 = { dispatch, get nav() { return nav; }, get items() { return items; }, get overlays() { return overlays.length; },
-      get console() { return consoleId; }, get boot() { return bootP.on ? bootP.active.kind : null; }, skipBoot: () => bootP.skip(), get switching() { return switching; }, get guardInfo() { return { switching, launching, busyMs: Math.round(guard.busyUntil - performance.now()), consoleId, running: !!running, bootWanted: { ps5: bootWanted('ps5'), x360: bootWanted('x360') }, bootActive: !!bootP.active, shown: data && data.boot && data.boot.shown }; }, get x360() { return xdash && xdash.current(); }, get xdash() { return xdash; }, get music() { return MUSIC.state(); }, get musicEvents() { return MUSIC.events; }, themeFocus, openList: (w) => (w === 'library' ? libraryOverlay() : w === 'manage' ? manageOverlay() : settingsOverlay()),
+      get console() { return consoleId; }, get boot() { return bootP.on ? bootP.active.kind : null; }, skipBoot: () => bootP.skip(), get switching() { return switching; }, get guardInfo() { return { switching, launching, busyMs: Math.round(guard.busyUntil - performance.now()), consoleId, running: !!running, bootWanted: { ps5: bootWanted('ps5'), x360: bootWanted('x360'), switch: bootWanted('switch') }, bootActive: !!bootP.active, shown: data && data.boot && data.boot.shown }; }, get x360() { return xdash && xdash.current(); }, get xdash() { return xdash; }, get nsw() { return ndash && ndash.current(); }, get ndash() { return ndash; }, get music() { return MUSIC.state(); }, get musicEvents() { return MUSIC.events; }, themeFocus, openList: (w) => (w === 'library' ? libraryOverlay() : w === 'manage' ? manageOverlay() : settingsOverlay()),
       launchScreen: (mode, id) => launchScreen(mode, data.games.find((g) => g.id === id)) };
   }
   main().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<pre style="position:fixed;left:20px;top:20px;color:#f88;z-index:99;font:16px monospace;white-space:pre-wrap">${esc(e.stack || e)}</pre>`); });

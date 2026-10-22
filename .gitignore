@@ -40,3 +40,4 @@ x360-logo.png
 test/root*/intro/
 # measurement helpers for the Xbox 360 work (need the local reference material)
 tools/x360/*.py
+test/root-switchref*/

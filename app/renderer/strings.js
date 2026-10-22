@@ -49,6 +49,7 @@
       fConsole: 'Menü', x360TabSearch: 'ara', x360TabHome: 'ana sayfa', x360TabGames: 'oyunlar', x360TabApps: 'uygulamalar',
       x360MyGames: 'Oyunlarım', x360Recent: 'Son Oynananlar', x360ToPs5: 'PS5 Menüsü', x360Search: 'Oyun Ara', x360AllGames: 'Tüm Oyunlar',
       x360AddFirst: 'Xbox 360 oyunu ekle',
+      nswConsoles: 'Diğer menüler', nswAllSoftware: 'Tüm yazılımlar', nswEmpty: 'Switch oyunu eklemek için Oyun Ekle\'yi seç.', nswStart: 'Başlat', nswOk: 'Tamam', switchTheme: 'Switch teması', switchWhite: 'Temel Beyaz', switchBlack: 'Temel Siyah', edenTemplate: 'Eden şablonu', edenPickExe: 'Eden bulunamadı, eden.exe dosyasını seç.',
       // 1.5
       files: 'dosya', fMusic: 'Müzik', fThemeBg: 'Arka plan', fAccent: 'Tema rengi', musicAuto: 'Otomatik', musicPick: 'Dosya seç…', musicOffOpt: 'Kapalı', musicShuffle: 'Karışık çal',
       srcPicked: 'Seçilen dosya', srcUserMusic: 'Kullanıcı klasörü', srcSce: 'PS4 tema müziği (snd0)', srcScePending: 'PS4 tema müziği hazırlanıyor', srcSceNoFf: 'snd0.at9 var, ffmpeg gerekli', srcFolder: 'Oyun klasörü', srcNone: 'Bulunamadı',
@@ -68,6 +69,7 @@
       fConsole: 'Menu', x360TabSearch: 'search', x360TabHome: 'home', x360TabGames: 'games', x360TabApps: 'apps',
       x360MyGames: 'My Games', x360Recent: 'Recent', x360ToPs5: 'PS5 Menu', x360Search: 'Search Games', x360AllGames: 'All Games',
       x360AddFirst: 'Add an Xbox 360 game',
+      nswConsoles: 'Other menus', nswAllSoftware: 'All Software', nswEmpty: 'Choose Add Game to add a Switch game.', nswStart: 'Start', nswOk: 'OK', switchTheme: 'Switch theme', switchWhite: 'Basic White', switchBlack: 'Basic Black', edenTemplate: 'Eden template', edenPickExe: 'Eden was not found; choose eden.exe.',
       games: 'Games', media: 'Media', play: 'Play', resume: 'Resume', closeGame: 'Close Game',
       library: 'Game Library', desktop: 'Desktop', openDesktop: 'Go to Desktop', open: 'Open',
       search: 'Search', settings: 'Settings', profile: 'Profile',

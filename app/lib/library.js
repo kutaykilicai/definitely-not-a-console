@@ -27,11 +27,14 @@ const EDITABLE = ['title', 'exe', 'args', 'workingDir', 'sceSys', 'losslessScali
 // Which console menu a game is shown in. Entries without the field (all older ones) are PS5 games;
 // a badge like "X360" also counts (renderer/consoles.js has the same rule).
 const XBOX_BADGE = /^(x360|xbox ?360|xb360)$/i;
+const SWITCH_BADGE = /^(switch|nsw|ns|nintendo ?switch)$/i;
 function consoleOf(g) {
   const c = String((g && g.console) || '').toLowerCase().replace(/[^a-z0-9]/g, '');
   if (c === 'x360' || c === 'xbox360' || c === 'xb360') return 'x360';
+  if (c === 'switch' || c === 'nsw' || c === 'ns' || c === 'nintendoswitch' || c === 'switch1') return 'switch';
   if (c) return 'ps5';
-  return XBOX_BADGE.test(String((g && g.badge) || '').trim()) ? 'x360' : 'ps5';
+  const b = String((g && g.badge) || '').trim();
+  return XBOX_BADGE.test(b) ? 'x360' : SWITCH_BADGE.test(b) ? 'switch' : 'ps5';
 }
 
 function saveEntry(doc, draft) {

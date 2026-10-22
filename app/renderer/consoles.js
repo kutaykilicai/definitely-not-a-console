@@ -5,6 +5,7 @@
   const CONSOLES = [
     { id: 'ps5', name: 'PlayStation 5', badges: /^(ps5|ps4|ps3|ps2|ps1|psp|psv|pc)?$/i },
     { id: 'x360', name: 'Xbox 360', badges: /^(x360|xbox ?360|xb360)$/i },
+    { id: 'switch', name: 'Nintendo Switch', badges: /^(switch|nsw|ns|nintendo ?switch)$/i },
   ];
   const IDS = CONSOLES.map((c) => c.id);
 
@@ -12,7 +13,7 @@
   // or an explicit console value moves a game to that menu.
   function consoleOf(g) {
     const c = String((g && g.console) || '').toLowerCase().replace(/[^a-z0-9]/g, '');
-    if (c) { if (IDS.includes(c)) return c; if (/^(xbox360|xb360)$/.test(c)) return 'x360'; if (/^ps\d?$/.test(c)) return 'ps5'; }
+    if (c) { if (IDS.includes(c)) return c; if (/^(xbox360|xb360)$/.test(c)) return 'x360'; if (/^(nsw|ns|nintendoswitch|switch1)$/.test(c)) return 'switch'; if (/^ps\d?$/.test(c)) return 'ps5'; }
     const b = String((g && g.badge) || '').trim();
     for (const k of CONSOLES) if (k.id !== 'ps5' && k.badges.test(b)) return k.id;
     return 'ps5';

@@ -73,6 +73,7 @@ const DEFAULT_SETTINGS = {
   homePadMs: 1000,
   // 1.5: the focused game's own music and picture, like a console
   themeMusic: true,
+  switchTheme: 'white',      // Switch HOME Menu: white | black (like the console's Basic White / Basic Black)
   themeVolume: 0.5,
   theme: true,
   ffmpegPath: '',            // empty: <data>\tools\ffmpeg.exe or ffmpeg on PATH
@@ -95,6 +96,7 @@ const readObj = (f, d) => {
 };
 
 let settings = { ...DEFAULT_SETTINGS, ...readObj(FILES.settings, {}) };
+const os = require('os');
 const OS_USER = (() => { try { return require('os').userInfo().username; } catch { return ''; } })();
 let state = readObj(FILES.state, { lastPlayed: {}, playSeconds: {}, focusId: null });
 for (const k of ['lastPlayed', 'playSeconds', 'windowModes', 'loadStats']) if (!state[k] || typeof state[k] !== 'object') state[k] = {};
@@ -177,11 +179,11 @@ function listIntroFiles() {
     const tr = trim[k] || trim[`${k}-boot`] || {};
     return { video: find(`${k}-boot`, ['mp4', 'webm']), audio: find(`${k}-boot`, ['wav', 'mp3', 'ogg']), logo: pngData(path.join(INTRO_DIR, `${k}-logo.png`)), start: num(tr.start), end: num(tr.end) };
   };
-  return { dir: INTRO_DIR, ps5: one('ps5'), x360: one('x360') };
+  return { dir: INTRO_DIR, ps5: one('ps5'), x360: one('x360'), switch: one('switch') };
 }
 // Which boot intros already played since the app started. Kept here, not in the window, because the
 // window is made again after a game and that must not count as a new start.
-const bootShown = { ps5: false, x360: false };
+const bootShown = { ps5: false, x360: false, switch: false };
 
 // ---------- theme: the game's music and picture (lib/theme.js) ----------
 const THEME_CACHE = path.join(DATA, 'cache', 'theme');
@@ -236,8 +238,14 @@ async function buildInit() {
     if (scene.avatar) scene.avatar = fileUrl(scene.avatar);
     for (const p of scene.panels || []) for (const t of p.tiles || []) if (t.image) t.image = fileUrl(t.image);
   }
+  // switchScene: the same for the Switch HOME Menu (tools/switch).
+  const nscene = settings.switchScene ? JSON.parse(JSON.stringify(settings.switchScene)) : null;
+  if (nscene) {
+    if (nscene.avatar) nscene.avatar = fileUrl(nscene.avatar);
+    for (const t of nscene.tiles || []) if (t.image) t.image = fileUrl(t.image);
+  }
   return {
-    games: all.filter((g) => !g.hidden), allGames: all, settings: { ...settings, username: settings.username || OS_USER, x360Scene: scene }, state, user: listUserAssets(), boot: { files: listIntroFiles(), shown: { ...bootShown } }, platform: process.platform,
+    games: all.filter((g) => !g.hidden), allGames: all, settings: { ...settings, username: settings.username || OS_USER, x360Scene: scene, switchScene: nscene }, state, user: listUserAssets(), boot: { files: listIntroFiles(), shown: { ...bootShown } }, platform: process.platform,
     paths: { root: ROOT, data: DATA, games: FILES.games, userAssets: USER_ASSETS },
     running: runner.running ? runner.current.game.id : null,
     paused: !!(session && (phase === 'paused' || phase === 'pausing' || phase === 'overlay')),
@@ -956,16 +964,34 @@ ipcMain.handle('launch', async (_e, id, opts = {}) => {
 ipcMain.handle('kill', async () => { await closeRunningGame(); return true; });
 ipcMain.handle('quit', (_e, mode) => { if (mode === 'cancel') return false; quitApp(mode === 'menu' ? 'menu' : 'both'); return true; });
 // ---------- game manager ----------
+// Eden (Nintendo Switch emulator): where it is expected, for the "Eden şablonu" in Oyun Ekle.
+// settings.edenDir wins; otherwise Desktop\Ai projeler\Eden (the real and the redirected Desktop).
+function edenInfo() {
+  const dirs = [settings.edenDir, path.join(os.homedir(), 'Desktop', 'Ai projeler', 'Eden'), path.join(app.getPath('desktop'), 'Ai projeler', 'Eden')].filter(Boolean);
+  for (const d of dirs) {
+    let names = []; try { names = fs.readdirSync(d); } catch { continue; }
+    const n = names.find((x) => /^eden(-cli)?\.exe$/i.test(x) && !/cli/i.test(x)) || names.find((x) => /^eden.*\.exe$/i.test(x) && !/cli|cmd/i.test(x));
+    if (n) return { dir: d, exe: path.join(d, n), exists: true };
+  }
+  return { dir: dirs[1], exe: path.join(dirs[1], 'eden.exe'), exists: false };
+}
+const switchTitle = (f) => path.basename(f).replace(/\.(nsp|xci|nsz|xcz|nca|nro|nso)$/i, '').replace(/\s*[[(][^\])]*[\])]/g, '').replace(/[_]+/g, ' ').trim() || path.basename(f);
 ipcMain.handle('pick', async (_e, kind, current) => {
+  if (kind === 'edenInfo') return edenInfo();
   const filters = {
     exe: [{ name: 'Program ya da kısayol', extensions: ['exe', 'lnk', 'bat', 'cmd'] }, { name: 'Tüm dosyalar', extensions: ['*'] }],
     image: [{ name: 'Resim', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
     audio: [{ name: 'Müzik', extensions: ['mp3', 'ogg', 'm4a', 'opus', 'wav', 'flac', 'aac', 'webm'] }],
+    switchgame: [{ name: 'Switch oyunu', extensions: ['nsp', 'xci', 'nsz', 'xcz', 'nca', 'nro', 'nso'] }, { name: 'Tüm dosyalar', extensions: ['*'] }],
+    eden: [{ name: 'Eden', extensions: ['exe'] }],
   }[kind];
   const props = kind === 'folder' || kind === 'scesys' ? ['openDirectory'] : kind === 'audio' ? ['openFile', 'multiSelections'] : ['openFile'];
-  const titles = { exe: 'Oyunu ya da kısayolunu seç', folder: 'Çalışma klasörünü seç', image: 'Resim seç', scesys: 'PS4 dökümündeki sce_sys klasörünü seç', audio: 'Oyunun müziğini seç (birden fazla seçilebilir)' };
+  const titles = { switchgame: 'Switch oyun dosyasını seç (.nsp, .xci …)', eden: 'eden.exe dosyasını seç', exe: 'Oyunu ya da kısayolunu seç', folder: 'Çalışma klasörünü seç', image: 'Resim seç', scesys: 'PS4 dökümündeki sce_sys klasörünü seç', audio: 'Oyunun müziğini seç (birden fazla seçilebilir)' };
+  // tests: PS5MENU_FAKE_PICK = {"<kind>": "<path>"} answers the file dialog
+  let fake = null; try { fake = process.env.PS5MENU_FAKE_PICK ? JSON.parse(process.env.PS5MENU_FAKE_PICK) : null; } catch { /* */ }
   pinTop(false);
-  const r = await dialog.showOpenDialog(win, { title: titles[kind], properties: props, filters, defaultPath: current && fs.existsSync(current) ? current : undefined });
+  const r = fake ? (fake[kind] ? { canceled: false, filePaths: [].concat(fake[kind]) } : { canceled: true, filePaths: [] })
+    : await dialog.showOpenDialog(win, { title: titles[kind], properties: props, filters, defaultPath: current && fs.existsSync(current) ? current : undefined });
   if (phase === 'home' && win && win.isFocused()) pinTop(true);
   if (r.canceled || !r.filePaths[0]) return null;
   const f = r.filePaths[0];
@@ -976,6 +1002,7 @@ ipcMain.handle('pick', async (_e, kind, current) => {
     }
     if (kind === 'scesys') return readSceSys(f);
     if (kind === 'audio') return { paths: r.filePaths.slice() };
+    if (kind === 'switchgame') return { path: f, title: switchTitle(f) };
     return { path: f };
   } catch (e) { return { error: e.message }; }
 });

@@ -293,11 +293,47 @@
     img.__prep = { ...(img.__prep || {}), [kind]: out };
     return out;
   }
+  // ---------- Nintendo Switch: original drawn intro ----------
+  // Red screen, the mark snaps together from both sides with a click, then the screen fades to the
+  // HOME Menu's light background. The user's switch-logo.png (if any) is drawn as a white
+  // silhouette and split down the middle for the snap; without one, two plain rounded halves.
+  const NS = { total: 4.3, fadeOut: 380, red: [232, 40, 30], white: [235, 235, 235] };
+  const ease3 = (u) => 1 - Math.pow(1 - clamp(u), 3);
+  function whiteMark(img) {
+    if (img.__nsw) return img.__nsw;
+    const c = document.createElement('canvas'); c.width = img.width; c.height = img.height; const x = c.getContext('2d');
+    x.drawImage(img, 0, 0); x.globalCompositeOperation = 'source-in'; x.fillStyle = '#fff'; x.fillRect(0, 0, c.width, c.height);
+    img.__nsw = c; return c;
+  }
+  function switchFrame(ctx, t, opt) {
+    const mix = (a, b, u) => a.map((v, i) => Math.round(v + (b[i] - v) * u));
+    let bg = t < 0.25 ? mix([0, 0, 0], NS.red, ease3(t / 0.25)) : NS.red;
+    const wf = clamp((t - 3.35) / 0.8); if (wf > 0) bg = mix(NS.red, NS.white, wf * wf * (3 - 2 * wf));
+    ctx.fillStyle = `rgb(${bg.join(',')})`; ctx.fillRect(0, 0, W, H);
+    const a = clamp((t - 0.3) / 0.12) * (1 - clamp((t - 3.3) / 0.5));
+    if (a <= 0) return;
+    // snap: halves come in from 90 px apart, overshoot 6 px, settle at 0.78 s
+    const u = clamp((t - 0.3) / 0.42); const gap = t < 0.72 ? 90 * (1 - ease3(u)) : t < 0.84 ? -6 * Math.sin(((t - 0.72) / 0.12) * Math.PI) : 0;
+    const bump = t >= 0.72 && t < 0.9 ? 1 + 0.03 * Math.sin(((t - 0.72) / 0.18) * Math.PI) : 1;
+    ctx.save(); ctx.globalAlpha = a; ctx.translate(W / 2, H / 2 - 30); ctx.scale(bump, bump);
+    const logo = opt && opt.logo && opt.logo.width ? whiteMark(opt.logo) : null;
+    if (logo) {
+      const h = 190, w = (logo.width / logo.height) * h; const half = logo.width / 2;
+      ctx.drawImage(logo, 0, 0, half, logo.height, -w / 2 - gap, -h / 2, w / 2, h);
+      ctx.drawImage(logo, half, 0, half, logo.height, gap, -h / 2, w / 2, h);
+    } else {
+      ctx.fillStyle = '#fff'; const rr = (x, y, w, h, r) => { ctx.beginPath(); ctx.roundRect(x, y, w, h, r); ctx.fill(); };
+      rr(-84 - gap, -95, 76, 190, 34); rr(8 + gap, -95, 76, 190, 34);
+      ctx.fillStyle = `rgb(${bg.join(',')})`; ctx.beginPath(); ctx.arc(-46 - gap, -45, 15, 0, Math.PI * 2); ctx.fill(); ctx.beginPath(); ctx.arc(46 + gap, 25, 15, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.restore();
+  }
+
   async function markUrl(url, kind) { const img = await loadImage(url); if (!img) return null; const p = prepLogo(img, kind); return kind === 'x360' ? p.mark.canvas.toDataURL('image/png') : p.url; }
 
-  const DUR = { ps5: PS5.total, x360: X.total };
-  const FADE = { ps5: PS5.fadeOut, x360: X.fadeOut };
-  function frame(kind, ctx, t, opt) { (kind === 'x360' ? x360Frame : ps5Frame)(ctx, t, opt); }
+  const DUR = { ps5: PS5.total, x360: X.total, switch: NS.total };
+  const FADE = { ps5: PS5.fadeOut, x360: X.fadeOut, switch: NS.fadeOut };
+  function frame(kind, ctx, t, opt) { (kind === 'x360' ? x360Frame : kind === 'switch' ? switchFrame : ps5Frame)(ctx, t, opt); }
 
   function loadImage(url) { return new Promise((res) => { if (!url) { res(null); return; } const i = new Image(); i.onload = () => res(i); i.onerror = () => res(null); i.src = url; }); }
 
@@ -397,5 +433,5 @@
     skip() { if (this.active) this.active.finish(true); }
   }
 
-  root.BOOT = { frame, DUR, FADE, Player, PS5, X, ORB, loadImage, prepLogo, markUrl };
+  root.BOOT = { frame, DUR, FADE, Player, PS5, X, NS, ORB, loadImage, prepLogo, markUrl };
 })(typeof window !== 'undefined' ? window : globalThis);

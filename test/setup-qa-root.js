@@ -68,6 +68,26 @@ if (mode === 'theme') {
   png(path.join(UG, 'muz-x', 'cover.png'), '2050c0'); tone(path.join(UG, 'muz-x', 'music.ogg'), 330, 30);
   settings.themeVolume = 0.5;
 }
+if (mode === 'switch' || mode === 'switchmany') {
+  // Nintendo Switch games: square pictures made here (plain colours with a shape), one without art
+  const { execFileSync } = require('child_process');
+  const png = (f, rgb, sz = '256x256', shape = '') => { fs.mkdirSync(path.dirname(f), { recursive: true }); execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `color=c=0x${rgb}:s=${sz}`, '-vf', shape || 'null', '-frames:v', '1', f]); };
+  const UG = path.join(dst, 'assets', 'user', 'games');
+  const n = mode === 'switchmany' ? 15 : 5; const lp = {};
+  const cols = ['d0453a', '3a7bd0', '4caf50', 'f0a020', '8e44ad', '16a085', 'c0392b', '2c3e50', 'e67e22', '27ae60', '2980b9', 'd35400', '7f8c8d', 'f39c12', '1abc9c'];
+  for (let i = 0; i < n; i++) {
+    const id = `sw-${i + 1}`;
+    doc.games.push(g(id, `Switch Oyunu ${i + 1}`, { console: 'switch' })); lp[id] = Date.now() - (i + 1) * 3600e3;
+    if (i !== 2) png(path.join(UG, id, 'icon.png'), cols[i], '256x256', `drawbox=x=48:y=48:w=160:h=160:color=white@0.85:t=fill,drawbox=x=88:y=88:w=80:h=80:color=0x${cols[(i + 3) % cols.length]}:t=fill`);
+  }
+  png(path.join(UG, 'sw-1', 'background.png'), 'a03028', '640x360');
+  settings.switchTheme = process.env.QA_SWITCH_THEME || 'white';
+  state = { console: 'switch', lastPlayed: lp };
+  // a stand-in Eden folder for the template (eden.exe is the dummy game)
+  const ed = path.join(base, 'Eden Emülatör'); fs.mkdirSync(ed, { recursive: true }); fs.copyFileSync(path.join(bin, 'dummy-game.sh'), path.join(ed, 'eden.exe')); fs.chmodSync(path.join(ed, 'eden.exe'), 0o755);
+  fs.writeFileSync(path.join(base, 'Mario Kart 8 Deluxe [0100152000022000][v0].nsp'), 'nsp');
+  settings.edenDir = ed;
+}
 if (mode === 'updates') {
   // two "ports" in folders with Turkish letters, and a fake GitHub (test/fake-github.js) state for them
   const FG = require('./fake-github.js'); const GH = process.env.FAKE_GH || 'http://127.0.0.1:47811';

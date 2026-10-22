@@ -48,7 +48,12 @@
         const e = ctx.createGain(); e.gain.setValueAtTime(0.0001, t0 + at); e.gain.exponentialRampToValueAtTime(g, t0 + at + dur * 0.45); e.gain.exponentialRampToValueAtTime(0.0001, t0 + at + dur);
         s.connect(f); f.connect(e); e.connect(out); s.start(t0 + at); s.stop(t0 + at + dur + 0.05); nodes.push(s);
       };
-      if (kind === 'x360') {
+      if (kind === 'switch') {
+        // two short clicks as the halves meet, then a soft high blip
+        const click = (at, f, g) => { const s = ctx.createBufferSource(); s.buffer = noise; const hp = ctx.createBiquadFilter(); hp.type = 'bandpass'; hp.frequency.value = f; hp.Q.value = 3; const e = ctx.createGain(); e.gain.setValueAtTime(g, t0 + at); e.gain.exponentialRampToValueAtTime(0.0001, t0 + at + 0.045); s.connect(hp); hp.connect(e); e.connect(out); s.start(t0 + at); s.stop(t0 + at + 0.06); nodes.push(s); };
+        click(0.70, 2600, 0.5); click(0.775, 3400, 0.42);
+        pad(0.8, 1568, 0.35, 0.025, 'sine', 0.01);
+      } else if (kind === 'x360') {
         // player time (0 = 0.40 s into the measured sequence)
         whoosh(0.0, 0.9, 500, 2400, 0.10);
         whoosh(0.8, 1.2, 700, 1800, 0.06); pad(0.8, 110, 2.2, 0.03, 'sine', 0.6);
