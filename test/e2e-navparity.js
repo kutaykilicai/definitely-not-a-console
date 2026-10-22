@@ -11,7 +11,7 @@ module.exports = ({ app, win }) => {
     const out = [];
     try {
       await sleep(1500);
-      const snap = () => js(`(() => { const n = window.__ps5.nav; return JSON.stringify({ tab: n.tab, zone: n.zone, row: n.row, top: n.top, action: n.action, card: n.card, ov: window.__ps5.overlays, cls: [...document.querySelectorAll('.focus, .focused')].filter((e) => !e.closest('#x360')).map((e) => e.className).join('|') }); })()`);
+      const snap = () => js(`(() => { const n = window.__ps5.nav; return JSON.stringify({ tab: n.tab, zone: n.zone, row: n.row, top: n.top, action: n.action, card: n.card, ov: window.__ps5.overlays, cls: [...document.querySelectorAll('.focus, .focused')].filter((e) => !e.closest('#x360') && !e.closest('#nsw')).map((e) => e.className).join('|') }); })()`);
       out.push(['start', await snap()]);
       for (const a of SEQ) { await js(`window.__ps5.dispatch(${JSON.stringify(a)})`); await sleep(160); out.push([a, await snap()]); }
       // Real key presses, including letters that were free in 1.3 (x, y) and must stay free.

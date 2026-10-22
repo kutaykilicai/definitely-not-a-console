@@ -62,8 +62,9 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
       await press('back'); await sleep(300); if ((await state()).x !== 'naruto-rise-of-a-ninja') { await press('back'); await sleep(300); }
 
       // L3 / PageUp: previous menu in the cycle PS5 -> X360 -> Switch, the new menu comes from above
-      await press('consolePrev'); await sleep(120);
-      const ty2 = await js(`(() => { const m = getComputedStyle(document.querySelector('#x360')).transform; return m === 'none' ? 0 : Number(m.replace(/[^0-9.,eE-]/g, '').split(',')[5]); })()`);
+      await press('consolePrev');
+      // sampled over the first 500 ms (a single sample can land before the first animation frame)
+      let ty2 = 0; for (let k = 0; k < 25 && ty2 <= 0; k++) { await sleep(20); ty2 = Math.max(ty2, await js(`(() => { const m = getComputedStyle(document.querySelector('#x360')).transform; return m === 'none' ? 0 : Number(m.replace(/[^0-9.,eE-]/g, '').split(',')[5]); })()`)); }
       check('prev: the outgoing X360 menu moves down (new one from above)', ty2 > 0, ty2);
       await settle(); s = await state(); v = await vis();
       check('L3 goes back to PS5', s.c === 'ps5' && v.p && !v.x, JSON.stringify(s));
