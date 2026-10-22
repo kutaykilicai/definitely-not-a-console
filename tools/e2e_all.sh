@@ -3,7 +3,7 @@
 # needs (fresh test roots each time). Prints one line per suite and exits non-zero if any failed.
 # usage: tools/e2e_all.sh [suite ...]   (default: all)
 R="$(cd "$(dirname "$0")/.." && pwd)"; O=${E2E_OUT:-/tmp/e2e-all}; mkdir -p "$O"
-ALL="unit e2e-launch e2e-home e2e-seamless e2e-progress e2e-x360 qa-corrupt qa-empty qa-many qa-flow qa-close qa-trim qa-beyond boot-synth boot-logo boot-video"
+ALL="unit e2e-launch e2e-home e2e-seamless e2e-progress e2e-x360 qa-corrupt qa-baddata qa-empty qa-many qa-flow qa-close qa-trim qa-beyond boot-synth boot-logo boot-video"
 SUITES="${*:-$ALL}"; FAIL=0
 X() { timeout ${TMO:-240} xvfb-run -a -s "-screen 0 ${SCREEN:-1920x1080x24}" "$@"; }
 fresh() { node "$R/test/setup-root.js" >/dev/null; rm -f "$R/test/root/data/state.json"; echo '{"intro":"none","bootIntro":"off","dumpRoots":[]}' > "$R/test/root/data/settings.json"; }

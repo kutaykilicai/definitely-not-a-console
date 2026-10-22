@@ -59,6 +59,30 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
         const stt = readJson(FILES.state, null);
         check('state.json is rewritten as valid JSON with the console', stt && stt.console === 'x360', JSON.stringify(stt && stt.console));
       }
+      if (MODE === 'baddata' || MODE === 'corrupt') {
+        const dir = require('path').dirname(FILES.state);
+        const bad = fs.readdirSync(dir).filter((f) => f.includes('.bozuk-'));
+        check('unreadable data files are kept as *.bozuk-<time>', MODE === 'corrupt' ? bad.some((f) => f.startsWith('state.json')) : ['state.json', 'settings.json'].every((n) => bad.some((f) => f.startsWith(n))), bad.join(','));
+      }
+      if (MODE === 'baddata') {
+        let s = await st();
+        check('junk games.json entries and wrong-type state/settings: menu starts', s.c === 'ps5', JSON.stringify(s));
+        const ids = await js('window.__ps5.items.filter((x) => x.kind === "game").map((x) => x.g.id + ":" + x.g.title)');
+        check('valid games still listed', ids.some((x) => x.startsWith('ornek-oyun')), ids.join(','));
+        const introOn = await js('document.querySelector("#intro").classList.contains("on")');
+        check('settings.json of the wrong type: defaults (press-a-button start screen)', introOn);
+        await press('consoleNext'); await sleep(300);
+        check('menu switch is ignored on the start screen', (await st()).n === 0);
+        // default settings: the boot intro, then the start screen; B gets past both
+        for (let i = 0; i < 6 && ((await st()).b || await js('document.querySelector("#intro").classList.contains("on")')); i++) { await press('back'); await sleep(900); }
+        for (const k of ['right', 'right', 'right', 'right', 'right', 'right', 'right', 'right', 'left']) { await press(k); await sleep(40); }
+        await press('consoleNext'); await settle(); s = await st();
+        check('X360 menu opens with them', s.c === 'x360', JSON.stringify(s) + await js('JSON.stringify({ g: window.__ps5.guardInfo, intro: document.querySelector("#intro").className, launch: document.querySelector("#launch").className, stage: document.querySelector("#stage").className })'));
+        for (const k of ['right', 'right', 'tabNext', 'right', 'down', 'tabPrev', 'tabPrev']) { await press(k); await sleep(40); }
+        await press('consolePrev'); await settle(); await sleep(400);
+        const stt = readJson(FILES.state, null);
+        check('state.json is valid again', stt && typeof stt === 'object' && stt.console === 'ps5', JSON.stringify(stt).slice(0, 80));
+      }
       if (MODE === 'trim' || MODE === 'beyond') {
         const timeBoot = async () => { const t0 = Date.now(); await waitFor(async () => !(await st()).b, 30000, 100); return (Date.now() - t0) / 1000; };
         check('PS5 video intro starts', (await st()).b === 'ps5');

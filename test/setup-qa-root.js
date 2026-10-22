@@ -44,10 +44,14 @@ if (mode === 'beyond') {
   fs.copyFileSync(path.join(from, 'ps5-boot.mp4'), path.join(intro, 'ps5-boot.mp4'));
   fs.writeFileSync(path.join(intro, 'intro.json'), JSON.stringify({ ps5: { start: 9999, end: 10000 } }));
 }
+if (mode === 'baddata') {
+  // junk entries in games.json and data files that parse to the wrong type
+  doc.games.push(null, 5, 'metin', [], {}, { id: 'num-title', title: 12345, exe: path.join(bin, 'dummy-game.sh') }, { id: 'no-title', exe: path.join(bin, 'dummy-game.sh'), console: 'x360' }, { title: 'Kimliksiz Oyun', exe: path.join(bin, 'dummy-game.sh') });
+}
 if (mode === 'empty') doc.games = doc.games.filter((x) => x.console !== 'x360');
 if (mode === 'many') for (let i = 0; i < 300; i++) doc.games.push(g(`x360-${i}`, `Xbox Oyunu ${i} İğüşçö`, { console: 'x360', args: '1' }));
 if (mode === 'flow' || mode === 'close') settings.bootIntro = 'once';
 fs.writeFileSync(gj, JSON.stringify(doc, null, 2));
-fs.writeFileSync(path.join(D, 'settings.json'), JSON.stringify(settings, null, 2));
-fs.writeFileSync(path.join(D, 'state.json'), typeof state === 'string' ? state : JSON.stringify(state));
+fs.writeFileSync(path.join(D, 'settings.json'), mode === 'baddata' ? '[1, 2]' : JSON.stringify(settings, null, 2));
+fs.writeFileSync(path.join(D, 'state.json'), mode === 'baddata' ? 'null' : typeof state === 'string' ? state : JSON.stringify(state));
 process.stdout.write(dst);

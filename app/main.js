@@ -67,15 +67,34 @@ const DEFAULT_SETTINGS = {
 
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch { return d; } };
 const writeJson = (f, v) => { try { fs.writeFileSync(f, JSON.stringify(v, null, 2) + '\n', 'utf8'); return true; } catch { return false; } };
+// A data file that exists but cannot be read (cut off, edited by hand, not an object) is kept as
+// <name>.bozuk-<time> before the menu goes on with defaults, so a later save cannot wipe it for good.
+const kept = new Set();
+const readObj = (f, d) => {
+  let raw = null; try { raw = fs.readFileSync(f, 'utf8'); } catch { return d; }
+  let v; try { v = JSON.parse(raw.replace(/^\uFEFF/, '')); } catch { v = undefined; }
+  if (v && typeof v === 'object' && !Array.isArray(v)) return v;
+  if (raw.trim() && !kept.has(f)) { kept.add(f); try { fs.copyFileSync(f, `${f}.bozuk-${new Date().toISOString().replace(/[:.]/g, '-')}`); } catch { /* read-only */ } }
+  return d;
+};
 
-let settings = { ...DEFAULT_SETTINGS, ...readJson(FILES.settings, {}) };
+let settings = { ...DEFAULT_SETTINGS, ...readObj(FILES.settings, {}) };
 const OS_USER = (() => { try { return require('os').userInfo().username; } catch { return ''; } })();
-let state = readJson(FILES.state, { lastPlayed: {}, playSeconds: {}, focusId: null });
-state.lastPlayed ||= {}; state.playSeconds ||= {}; state.windowModes ||= {}; state.loadStats ||= {};
+let state = readObj(FILES.state, { lastPlayed: {}, playSeconds: {}, focusId: null });
+for (const k of ['lastPlayed', 'playSeconds', 'windowModes', 'loadStats']) if (!state[k] || typeof state[k] !== 'object') state[k] = {};
 
 async function loadGames() {
-  const doc = readJson(FILES.games, null) || { version: 1, games: [] };
+  const doc = readObj(FILES.games, null) || { version: 1, games: [] };
   if (!Array.isArray(doc.games)) doc.games = [];
+  doc.games = doc.games.filter((g) => g && typeof g === 'object' && !Array.isArray(g));
+  // hand-edited entries: a missing id or a non-text title used to stop the whole menu from loading
+  const taken = new Set(doc.games.map((g) => (typeof g.id === 'string' && g.id ? g.id : null)).filter(Boolean));
+  for (const g of doc.games) {
+    if (g.title != null && typeof g.title !== 'string') g.title = String(g.title);
+    if (typeof g.id !== 'string' || !g.id) { g.id = library.makeId(g.title || (typeof g.exe === 'string' && path.basename(g.exe, path.extname(g.exe))) || 'oyun', taken); taken.add(g.id); }
+    if (!g.title) g.title = typeof g.exe === 'string' && g.exe ? path.basename(g.exe, path.extname(g.exe)) : g.id;
+    if (g.exe != null && typeof g.exe !== 'string') g.exe = '';
+  }
   return doc;
 }
 const saveGames = (doc) => writeJson(FILES.games, doc);
