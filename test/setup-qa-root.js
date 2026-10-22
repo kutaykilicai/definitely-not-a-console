@@ -92,6 +92,10 @@ if (mode === 'stats') {
   state = { console: 'ps5', focusId: 'st-a', lastPlayed: { 'st-a': now - 2 * H, 'st-b': now - 1 * D, 'st-c': now - 40 * D, 'st-x': now - 3 * D }, playSeconds: { 'st-a': 30 * 3600 + 120, 'st-b': 2 * 3600, 'st-c': 5 * 3600, 'st-x': 3600 },
     sessions: [{ id: 'st-a', end: now - 3 * D, sec: 3 * 3600 }, { id: 'st-a', end: now - 1 * D, sec: 5400 }, { id: 'st-b', end: now - 1 * D, sec: 1800 }, { id: 'st-a', end: now - 2 * H, sec: 2 * 3600 + 600 }, { id: 'st-x', end: now - 3 * D, sec: 3600 }] };
 }
+if (mode === 'console') {
+  fs.writeFileSync(path.join(base, 'pads.json'), '[]'); fs.writeFileSync(path.join(base, 'run.json'), JSON.stringify({ Steam: '"C:\\Steam\\steam.exe" -silent' }));
+  settings.autostart = false; settings.intro = 'press';
+}
 if (mode === 'many') for (let i = 0; i < 300; i++) doc.games.push(g(`x360-${i}`, `Xbox Oyunu ${i} İğüşçö`, { console: 'x360', args: '1' }));
 if (mode === 'flow' || mode === 'close') settings.bootIntro = 'once';
 if (mode === 'single') doc.games = doc.games.find((x) => x.console === 'x360');   // one game, not a list

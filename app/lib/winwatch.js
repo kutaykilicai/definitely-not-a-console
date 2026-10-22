@@ -153,6 +153,7 @@ class WinHelper {
   term(pids) { return this.request(`term ${pids.join(',')}`); }
   watch(o) { return this.request(`watch ${o.esc ? 1 : 0} ${Math.round(o.escMs || 1000)} ${o.pad ? 1 : 0} ${Math.round(o.padMs || 1000)}`); }
   unwatch() { return this.request('unwatch'); }
+  battery() { return this.request('battery'); }
   // Quitting: the helper resumes anything it paused before it exits.
   close() {
     this.closed = true;

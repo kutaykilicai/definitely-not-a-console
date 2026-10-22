@@ -610,6 +610,9 @@
       { label: t('bootIntro'), icon: ICONS.info, value: st.bootIntro === 'off' ? t('bootOff') : t('bootOnce'), stay: true, run: () => set('bootIntro', data.settings.bootIntro === 'off' ? 'once' : 'off') },
       { label: t('introScreen'), icon: ICONS.info, value: introLabel(st.intro), stay: true, run: () => set('intro', intros[(intros.indexOf(data.settings.intro) + 1) % 3]) },
       { label: t('autostart'), icon: ICONS.power, value: st.autostart ? t('on') : t('off'), stay: true, run: () => set('autostart', !data.settings.autostart) },
+      { label: t('padOpen'), icon: ICONS.pad, value: st.padOpen !== false ? t('on') : t('off'), stay: true, run: () => set('padOpen', data.settings.padOpen === false) },
+      { label: t('consoleMode'), icon: ICONS.pad, value: st.consoleMode ? t('on') : t('off'), stay: true, run: () => (data.settings.consoleMode ? set('consoleMode', false) : choiceDialog({ title: t('consoleMode'), body: t('consoleModeHint'), options: [{ label: t('cancel') }, { label: t('ok'), run: () => set('consoleMode', true) }], focus: 1, cancel: 0 })) },
+      { label: t('padBatShow'), icon: ICONS.battery || ICONS.pad, value: st.padBattery !== false ? t('on') : t('off'), stay: true, run: () => set('padBattery', data.settings.padBattery === false).then(() => padBattery({ pads: lastPads })) },
       { label: t('fullscreen'), icon: ICONS.desktop, value: st.fullscreen !== false ? t('on') : t('off'), stay: true, run: () => set('fullscreen', data.settings.fullscreen === false) },
       { label: t('homeEsc'), icon: ICONS.pad, value: st.homeEsc !== false ? t('on') : t('off'), stay: true, run: () => set('homeEsc', data.settings.homeEsc === false) },
       { label: t('homeEscMs'), icon: ICONS.clock, value: holdLabel(st.homeEscMs), stay: true, run: () => set('homeEscMs', nextHold(data.settings.homeEscMs)) },
@@ -620,6 +623,23 @@
     const o = listOverlay({ entries: () => { Object.assign(st, data.settings); return entries(); }, full: true, title: t('settings'), keepOpen: true });
     o.input = ((orig) => (a) => { orig(a); })(o.input);
     pushOverlay(o);
+  }
+
+  // ---------- controller battery ----------
+  // XInput gives a type (1 wired, 2 alkaline, 3 NiMH, 255 unknown) and a level 0..3 (empty, low,
+  // medium, full), no percentage. Wired / unknown pads show nothing; level 0 warns once per pad.
+  const batWarned = new Set(); let lastPads = [];
+  function padBattery(b) {
+    const el = $('#padbat'); if (!el) return;
+    const pads = ((b && b.pads) || []).filter((p) => (p.type === 2 || p.type === 3) && p.level >= 0 && p.level <= 3);
+    lastPads = pads;
+    if (!pads.length || data.settings.padBattery === false || CAPTURE) { el.classList.remove('on'); el.innerHTML = ''; return; }
+    el.innerHTML = pads.map((p) => `<div class="pb${p.level === 0 ? ' low' : ''}" title="${esc(t('padBattery'))}">${ICONS.pad || ''}<div class="cell">${[0, 1, 2].map((k) => `<i class="${k < Math.max(1, p.level) ? 'f' : ''}"></i>`).join('')}</div></div>`).join('');
+    el.classList.add('on');
+    for (const p of pads) {
+      if (p.level === 0 && !batWarned.has(p.i)) { batWarned.add(p.i); if (!running) toast(t('padLow'), t('padLowBody')); }
+      if (p.level >= 2) batWarned.delete(p.i);
+    }
   }
 
   // ---------- play statistics ----------
@@ -1125,6 +1145,7 @@
   api.on('game-paused', (d) => { if (d && d.id) { running = d.id; paused = true; layoutRow(true); renderHero(); } });
   api.on('confirm-quit', (d) => quitDialog(d));
   api.on('updates-changed', (v) => onUpdatesChanged(v));
+  api.on('pad-battery', (b) => padBattery(b));
   // snd0.at9 was turned into Ogg in the background: the game has music now
   api.on('theme-update', (d) => {
     if (!d || !data) return;

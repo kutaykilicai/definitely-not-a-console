@@ -281,6 +281,24 @@ static int pad_held(unsigned long long now) {
   return held;
 }
 
+// Controller batteries (XInputGetBatteryInformation, xinput1_4/1_3). XInput reports a type and one of
+// four levels (empty/low/medium/full), not a percentage. Only connected slots are reported.
+typedef struct { BYTE type, level; } xbat_t;
+typedef DWORD (WINAPI *xbat_fn)(DWORD, BYTE, xbat_t *);
+static void cmd_battery(void) {
+  static xbat_fn fn; static int tried;
+  if (!tried) { tried = 1; static const char *dlls[] = { "xinput1_4.dll", "xinput1_3.dll" }; for (int i = 0; i < 2 && !fn; i++) { HMODULE m = LoadLibraryA(dlls[i]); if (m) fn = (xbat_fn)(void *)GetProcAddress(m, "XInputGetBatteryInformation"); } }
+  load_xinput();
+  char buf[512]; int n = snprintf(buf, sizeof buf, "{\"ok\":%s,\"pads\":[", fn ? "true" : "false"); int first = 1;
+  for (DWORD i = 0; i < 4 && g_xget; i++) {
+    xstate_t st; ZeroMemory(&st, sizeof st);
+    if (g_xget(i, &st) != 0) continue;
+    xbat_t b = { 0, 0 }; DWORD r = fn ? fn(i, 0 /* BATTERY_DEVTYPE_GAMEPAD */, &b) : 1;
+    n += snprintf(buf + n, sizeof buf - n, "%s{\"i\":%lu,\"type\":%d,\"level\":%d,\"r\":%lu}", first ? "" : ",", (unsigned long)i, r == 0 ? b.type : -1, r == 0 ? b.level : -1, (unsigned long)r); first = 0;
+  }
+  snprintf(buf + n, sizeof buf - n, "]}"); put_line(buf);
+}
+
 static LRESULT CALLBACK kb_hook(int code, WPARAM wp, LPARAM lp) {
   if (code == HC_ACTION) {
     const KBDLLHOOKSTRUCT *k = (const KBDLLHOOKSTRUCT *)lp;
@@ -397,6 +415,7 @@ int main(void) {
     else if (!strcmp(cmd, "term")) cmd_term(strtok_s(NULL, " ", &ctx));
     else if (!strcmp(cmd, "watch")) { char *a = strtok_s(NULL, " ", &ctx), *b = strtok_s(NULL, " ", &ctx), *c = strtok_s(NULL, " ", &ctx), *d = strtok_s(NULL, " ", &ctx); cmd_watch(a, b, c, d); }
     else if (!strcmp(cmd, "unwatch")) cmd_unwatch();
+    else if (!strcmp(cmd, "battery")) cmd_battery();
     else out("{\"ok\":false,\"error\":\"unknown command\"}");
     flush();
   }

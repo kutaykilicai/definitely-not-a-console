@@ -102,5 +102,7 @@ F.ls = {
     setTimeout(() => { F.lsMain = 'max'; setFg(LS_MAIN); ev('ls-window-shown'); }, 800);
   },
 };
+// controller batteries: PS5MENU_FAKE_PADS = file with [{i,type,level}] (re-read on every call)
+F.battery = async () => { let pads = []; try { pads = JSON.parse(require('fs').readFileSync(process.env.PS5MENU_FAKE_PADS, 'utf8')); } catch { /* */ } return { ok: true, pads }; };
 F.reset = (mode) => { F.mode = mode; F.lsRunning = false; F.lsMain = null; setLsOut(false); F.events = []; F.min.clear(); F.hung.clear(); F.ignoreClose = false; };
 module.exports = F;

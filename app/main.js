@@ -14,6 +14,7 @@ const homeflow = require('./lib/homeflow');
 const loadprogress = require('./lib/loadprogress.js');
 const theme = require('./lib/theme');
 const { Updater } = require('./lib/updater');
+const { PadWatch } = require('./lib/padwatch');
 
 const isWin = process.platform === 'win32';
 const argv = process.argv.slice(1);
@@ -75,6 +76,9 @@ const DEFAULT_SETTINGS = {
   themeVolume: 0.5,
   theme: true,
   ffmpegPath: '',            // empty: <data>\tools\ffmpeg.exe or ffmpeg on PATH
+  padOpen: true,             // dnac-padwatch.exe opens the menu when a controller connects (HKCU Run)
+  padBattery: true,          // wireless controller battery in the corner
+  consoleMode: false,        // with Windows, straight into the menu; saved settings come back when off
 };
 
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch { return d; } };
@@ -111,7 +115,8 @@ async function loadGames() {
   }
   return doc;
 }
-const saveGames = (doc) => writeJson(FILES.games, doc);
+let padwatch = null;   // set below once the Run key is known
+const saveGames = (doc) => { const ok = writeJson(FILES.games, doc); if (padwatch) padwatch.writeList(doc.games); return ok; };
 
 // Exe icon for games without art (the tile shows it on a generated background).
 const iconCache = new Map();
@@ -261,6 +266,26 @@ function mediaResponse(p, range) {
 }
 
 const runner = new GameRunner();
+// Controller connects -> menu (bin/dnac-padwatch.exe). Tests use a JSON file for the Run key.
+const runKey = process.env.PS5MENU_FAKE_REG ? migrate.fileRun(process.env.PS5MENU_FAKE_REG) : isWin ? migrate.regRun(require('child_process').execFileSync) : null;
+padwatch = runKey ? new PadWatch({ binDir: path.join(__dirname, 'bin'), menuExe: process.execPath, dataDir: DATA, reg: runKey, isWin, log: (...a) => log(...a) }) : null;
+// Konsol modu: start with Windows, no "press A" screen, controller opens the menu. Turning it off
+// puts back exactly what was there before.
+function setConsoleMode(on) {
+  if (on && !settings.consoleMode) {
+    settings.consoleModePrev = { autostart: !!settings.autostart, padOpen: settings.padOpen !== false, intro: settings.intro };
+    Object.assign(settings, { autostart: true, padOpen: true, intro: 'none' });
+  } else if (!on && settings.consoleMode) {
+    Object.assign(settings, settings.consoleModePrev || { autostart: false });
+    delete settings.consoleModePrev;
+  }
+}
+// Wireless controller battery: asked every 30 s while the menu is up (not during a game).
+let lastBattery = null;
+async function pollBattery() {
+  if (settings.padBattery === false || runner.running || !win || win.isDestroyed() || !win.isVisible() || !helper.available || !helper.battery || !(isWin || FAKE)) return;
+  try { const b = await helper.battery(); const k = JSON.stringify(b && b.pads); if (k !== lastBattery) { lastBattery = k; send('pad-battery', b); } } catch { /* */ }
+}
 // Port updates (Ayarlar > Güncellemeler). Tests point it at a fake GitHub; other tests stay offline.
 const robocopy = (src, dst) => { try { require('child_process').execFileSync('robocopy.exe', [src, dst, '/E', '/COPY:DAT', '/DCOPY:T', '/R:1', '/W:1', '/MT:8', '/NFL', '/NDL', '/NJH', '/NJS', '/NP'], { windowsHide: true, stdio: 'ignore' }); } catch (e) { if (!(e.status >= 0 && e.status < 8)) throw new Error(`robocopy ${e.status}`); } };
 const updater = new Updater({
@@ -878,6 +903,7 @@ async function launchGame(g) {
 }
 
 runner.on('started', (game) => {
+  if (padwatch) padwatch.gameState(true);
   if (!win) return;
   send('game-started', { id: game.id, seamless: seamless() });
   // No window helper (not Windows, or the helper is missing): the old way, hide the menu.
@@ -885,6 +911,8 @@ runner.on('started', (game) => {
 });
 runner.on('error', (game, e) => { phase = 'home'; session = null; openMenu('exit'); send('game-error', { id: game.id, message: e.message }); });
 runner.on('exited', (game, info) => {
+  if (padwatch) padwatch.gameState(false);
+  lastBattery = null; setTimeout(pollBattery, 1500);
   state.lastPlayed[game.id] = Date.now();
   state.playSeconds[game.id] = (state.playSeconds[game.id] || 0) + (info.failed ? 0 : info.seconds);
   if (!info.failed && info.seconds > 0) {
@@ -979,8 +1007,10 @@ ipcMain.handle('game-delete', async (_e, id) => {
 ipcMain.handle('boot-shown', (_e, kind) => { if (kind in bootShown) bootShown[kind] = true; return { ...bootShown }; });
 ipcMain.handle('save-state', (_e, patch) => { Object.assign(state, patch || {}); writeJson(FILES.state, state); return true; });
 ipcMain.handle('set-setting', (_e, key, value) => {
+  if (key === 'consoleMode') setConsoleMode(!!value);
   settings[key] = value; writeJson(FILES.settings, settings);
-  if (key === 'autostart' && isWin) app.setLoginItemSettings({ openAtLogin: !!value, path: process.execPath });
+  if ((key === 'autostart' || key === 'consoleMode') && isWin) app.setLoginItemSettings({ openAtLogin: !!settings.autostart, path: process.execPath });
+  if ((key === 'padOpen' || key === 'consoleMode') && padwatch) padwatch.sync(settings.padOpen !== false);
   if (key === 'fullscreen' && win) win.setFullScreen(!!value);
   return { ...settings, username: settings.username || OS_USER };
 });
@@ -1047,6 +1077,8 @@ app.whenReady().then(() => {
   // Start the window helper early so the first launch does not wait for it.
   if (seamless()) helper.snap(0, []).catch(() => {});
   updater.start(Number(process.env.PS5MENU_UPDATE_DELAY_MS) || 45e3);
+  if (padwatch) { loadGames().then((d) => padwatch.writeList(d.games)).catch(() => {}); padwatch.gameState(false); try { padwatch.sync(settings.padOpen !== false); } catch (e) { log('padwatch', e.message); } }
+  setTimeout(pollBattery, 2500); setInterval(pollBattery, Number(process.env.PS5MENU_BATTERY_MS) || 30e3);
   // Bring the menu back from anywhere (keyboard). Controller PS button is handled in the renderer.
   try { globalShortcut.register('CommandOrControl+Alt+Home', () => homeShortcut()); } catch { /* */ }
   if (isWin && settings.autostart) app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
@@ -1061,6 +1093,7 @@ app.whenReady().then(() => {
 app.on('before-quit', (e) => {
   if (needsQuitQuestion()) { e.preventDefault(); askQuit(); return; }
   quitting = true; helper.close();
+  if (padwatch) { padwatch.closedByUser(); padwatch.gameState(false); }
 });
 app.on('will-quit', () => { globalShortcut.unregisterAll(); helper.close(); });
 // The menu window is closed on purpose during a game; only quit when that is not the case.

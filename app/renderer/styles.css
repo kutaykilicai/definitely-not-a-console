@@ -266,3 +266,16 @@ body.nocursor, body.nocursor * { cursor: none !important; }
 .full.stats .st-row.focus { background: rgba(255,255,255,0.12); }
 .full.stats .st-row.focus::after { content: ''; position: absolute; inset: 0 -8px; border: 3px solid #fff; border-radius: 10px; }
 .full.stats .st-empty { font-size: 26px; color: rgba(255,255,255,0.6); }
+
+/* Wireless controller battery (1.5.0): only when a wireless pad reports one; nothing otherwise */
+#padbat { position: absolute; right: 88px; top: 92px; z-index: 7; display: none; transition: transform 360ms var(--ease-out); align-items: center; gap: 8px; font-size: 18px; color: rgba(255,255,255,0.8); }
+#padbat.on { display: flex; }
+#stage.scrolled #padbat { transform: translateY(-680px); }
+#padbat .pb { display: flex; align-items: center; gap: 6px; }
+#padbat .pb svg, #padbat .pb .ico { width: 26px; height: 26px; flex: none; }
+#padbat .cell { width: 30px; height: 14px; border: 2px solid rgba(255,255,255,0.85); border-radius: 3px; padding: 1px; display: flex; gap: 1px; position: relative; }
+#padbat .cell::after { content: ''; position: absolute; right: -5px; top: 3px; width: 3px; height: 6px; background: rgba(255,255,255,0.85); border-radius: 0 1px 1px 0; }
+#padbat .cell i { flex: 1; background: #fff; border-radius: 1px; opacity: 0.12; }
+#padbat .cell i.f { opacity: 1; }
+#padbat .pb.low .cell { border-color: #ff6b5e; } #padbat .pb.low .cell i.f { background: #ff6b5e; }
+#stage.c-x360 #padbat { right: 136px; top: 108px; font-family: var(--x-font); }

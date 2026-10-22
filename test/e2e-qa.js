@@ -321,6 +321,63 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
           check(`${c}: lists closed`, (await st()).ov === 0, JSON.stringify(await st()));
         }
       }
+      if (MODE === 'console') {
+        const path = require('path');
+        const PADS = process.env.PS5MENU_FAKE_PADS, RUN = process.env.PS5MENU_FAKE_REG, D = path.join(process.env.PS5MENU_ROOT, 'data');
+        const shot = async (name) => { if (process.env.QA_SHOT) fs.writeFileSync(`${process.env.QA_SHOT}/${name}.png`, (await win.webContents.capturePage()).toPNG()); };
+        const toastTxt = () => js('(() => { const t = document.querySelector("#toast"); return t.classList.contains("on") ? t.textContent.trim() : ""; })()');
+        const bat = () => js('(() => { const e = document.querySelector("#padbat"); return { on: e.classList.contains("on"), cells: e.querySelectorAll(".cell i.f").length, low: !!e.querySelector(".pb.low"), n: e.querySelectorAll(".pb").length }; })()');
+        const rd = (f) => { try { return fs.readFileSync(f, 'utf8'); } catch { return ''; } };
+        await sleep(400); await press('select'); await settle(); await sleep(600);
+        let b = await bat(); check('no controller: no battery indicator (PS5 look unchanged)', !b.on, JSON.stringify(b));
+        fs.writeFileSync(PADS, JSON.stringify([{ i: 0, type: 1, level: 3 }])); await sleep(1200); b = await bat();
+        check('wired controller: nothing shown', !b.on, JSON.stringify(b));
+        fs.writeFileSync(PADS, JSON.stringify([{ i: 0, type: 3, level: 3 }])); await sleep(1200); b = await bat();
+        check('wireless, full: indicator with 3 of 3', b.on && b.cells === 3 && !b.low, JSON.stringify(b));
+        info.batRect = await js('(() => { const e = document.querySelector("#padbat"); const r = e.getBoundingClientRect(); const cs = getComputedStyle(e); return [r.x, r.y, r.width, r.height, cs.display, cs.visibility, cs.opacity, e.innerHTML.length, e.parentElement.id]; })()');
+        await shot('ps5_battery');
+        fs.writeFileSync(PADS, JSON.stringify([{ i: 0, type: 2, level: 0 }])); await sleep(1200); b = await bat();
+        const lowToast = await toastTxt();
+        check('wireless, empty: red indicator and one warning', b.on && b.low && /pili azaldı/.test(lowToast), `${JSON.stringify(b)} ${lowToast}`);
+        await js('document.querySelector("#toast").classList.remove("on")');
+        fs.writeFileSync(PADS, JSON.stringify([{ i: 0, type: 2, level: 0 }, { i: 1, type: 2, level: 1 }])); await sleep(1200);
+        check('the warning is not repeated for the same controller', !/pili azaldı/.test(await toastTxt()) && (await bat()).n === 2);
+        // padwatch files and Run entry
+        const run = () => JSON.parse(rd(RUN) || '{}');
+        const ent = run()['Definitely Not a Console - Kumanda'] || '';
+        check('Kumanda bağlanınca menüyü aç (default on): HKCU Run entry for dnac-padwatch.exe with --menu/--data', /dnac-padwatch\.exe" --menu ".+" --data ".+data"$/.test(ent) && run().Steam, ent);
+        const list = rd(path.join(D, 'cache', 'padwatch.txt'));
+        check('cache\\padwatch.txt lists emulators (and game exe names; the test games are .sh, left out)', /shadps4\.exe/.test(list) && /xenia\.exe/.test(list) && !/dummy-game/.test(list), list.split('\n').slice(0, 6).join(','));
+        check('cache\\menu-state.txt says "menu"', rd(path.join(D, 'cache', 'menu-state.txt')) === 'menu');
+        const toggle = async (re) => {
+          await js('window.__ps5.openList("settings")'); await sleep(300);
+          const rows = await js('[...document.querySelectorAll("#overlay .full .panel .it")].map((e) => e.textContent)');
+          const k = rows.findIndex((r) => re.test(r)); for (let i = 0; i < k; i++) { await press('down'); await sleep(25); }
+          await press('select'); await sleep(400);
+        };
+        await toggle(/^Kumanda bağlanınca/); await press('back'); await sleep(300);
+        check('turned off: the Run entry is removed, Steam untouched', !run()['Definitely Not a Console - Kumanda'] && run().Steam, JSON.stringify(run()));
+        await toggle(/^Kumanda bağlanınca/); await press('back'); await sleep(300);
+        check('turned on again: entry back', !!run()['Definitely Not a Console - Kumanda']);
+        await toggle(/^Konsol modu/); await sleep(200);
+        const dlg = await js('(document.querySelector("#overlay .dialog.choice .sub") || {}).textContent || ""');
+        await press('select'); await sleep(400);
+        let sj = JSON.parse(rd(path.join(D, 'settings.json')));
+        check('Konsol modu: explained first, then autostart on, no press-A screen, previous values saved', /Windows açılınca/.test(dlg) && sj.consoleMode === true && sj.autostart === true && sj.intro === 'none' && sj.consoleModePrev && sj.consoleModePrev.autostart === false && sj.consoleModePrev.intro === 'press', JSON.stringify(sj));
+        await shot('ps5_settings_console');
+        await press('back'); await sleep(300);
+        await toggle(/^Konsol modu/); await press('back'); await sleep(300);
+        sj = JSON.parse(rd(path.join(D, 'settings.json')));
+        check('Konsol modu off: everything as before', sj.consoleMode === false && sj.autostart === false && sj.intro === 'press' && !sj.consoleModePrev, JSON.stringify(sj));
+        // a game: menu-state "game", battery not asked
+        await press('select'); await waitFor(() => runner.running, 5000); await sleep(800);
+        check('during a game: cache\\menu-state.txt = "game"', rd(path.join(D, 'cache', 'menu-state.txt')) === 'game');
+        await waitFor(() => !runner.running, 20000, 200); await sleep(800);
+        check('after it: "menu" again', rd(path.join(D, 'cache', 'menu-state.txt')) === 'menu');
+        await press('consoleNext'); await settle(); await sleep(1500);
+        b = await bat(); check('X360: the indicator shows there too', b.on, JSON.stringify(b));
+        await shot('x360_battery');
+      }
       if (MODE === 'stats') {
         const shot = async (name) => { if (process.env.QA_SHOT) fs.writeFileSync(`${process.env.QA_SHOT}/${name}.png`, (await win.webContents.capturePage()).toPNG()); };
         const toastTxt = () => js('(() => { const t = document.querySelector("#toast"); return t.classList.contains("on") ? t.textContent.trim() : ""; })()');
