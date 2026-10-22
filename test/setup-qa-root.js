@@ -66,6 +66,8 @@ if (mode === 'theme') {
   fs.writeFileSync(path.join(sce, 'snd0.at9'), Buffer.alloc(4096, 7)); png(path.join(sce, 'icon0.png'), 'c03020');
   doc.games.find((x) => x.id === 'muz-b').sceSys = sce;
   png(path.join(UG, 'muz-x', 'cover.png'), '2050c0'); tone(path.join(UG, 'muz-x', 'music.ogg'), 330, 30);
+  // a Switch game with music of its own (picked by the user, like TotK would be)
+  doc.games.push(g('muz-s', 'Switch Temalı', { console: 'switch' })); tone(path.join(UG, 'muz-s', 'music.ogg'), 660, 30);
   settings.themeVolume = 0.5;
 }
 if (mode === 'switch' || mode === 'switchmany') {

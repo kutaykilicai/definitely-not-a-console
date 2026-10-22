@@ -1,7 +1,7 @@
 {
   "name": "definitely-not-a-console",
   "productName": "Definitely Not a Console",
-  "version": "1.5.0",
+  "version": "1.5.1",
   "description": "Windows için konsol menülerine (PS5, Xbox 360) benzeyen bir oyun başlatıcı. Resmi değildir.",
   "main": "main.js",
   "author": "Kutay Kılıç <vodkakutay@gmail.com>",

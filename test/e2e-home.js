@@ -33,9 +33,10 @@ module.exports = ({ app, getWin, FILES, readJson, getPhase, getSession }) => {
   async function pauseCase() {
     F.reset('auto');
     F.writeSettings(readJson(FILES.games).games.find((g) => g.id === 'ornek-oyun').exe, true);
-    check('game starts, menu window closed', await start('ornek-oyun', 90, { losslessScaling: true, suspendInMenu: undefined }));
+    check('game starts, menu window closed', await start('ornek-oyun', 90, { losslessScaling: true, suspendInMenu: true }));
     check('LS scaling after start', await waitFor(() => F.lsOut, 15000));
     check('hold watcher armed while playing', await waitFor(() => !!F.watching, 3000));
+    check('watcher: Back+Start hold plus a single Guide press (pad mode 3, no padwatch)', F.watching && F.watching.pad === 3, F.watching && F.watching.pad);
     const pid = await gamePid(); info.firstPid = pid;
     await sleep(500);
     F.hold('esc');
@@ -61,16 +62,30 @@ module.exports = ({ app, getWin, FILES, readJson, getPhase, getSession }) => {
   }
 
   async function noSuspendCase() {
-    getSession().game.suspendInMenu = false;   // what "Menüdeyken oyunu duraklat: Kapalı" stores
+    delete getSession().game.suspendInMenu;   // default since 1.5.1: the game keeps running behind the menu
     F.events = [];
     const pid = await gamePid();
-    F.hold('pad');
-    check('Xbox button hold: paused phase', await waitFor(() => getPhase() === 'paused', 6000), getPhase());
-    check('suspend switched off for this game: process keeps running', F.procState(pid) !== 'T' && !has('suspend 1'), F.procState(pid));
+    F.hold('guide');
+    check('single Xbox (Guide) press: menu over the game', await waitFor(() => getPhase() === 'paused', 6000), getPhase());
+    check('default: game process keeps running (not suspended)', F.procState(pid) !== 'T' && !has('suspend 1'), F.procState(pid));
     await ready(); await sleep(500);
     await js('(() => { window.__ps5.dispatch("select"); return true; })()');
     check('resume without suspension works', await playing());
-    delete getSession().game.suspendInMenu;
+    check('same game process (no relaunch)', (await gamePid()) === pid);
+  }
+
+  // Share button (dnac-padwatch.exe shows the desktop and tells the running menu "--desktop"): the
+  // game goes to the taskbar and keeps running, nothing is suspended, no refocus pulls it back.
+  async function desktopCase() {
+    F.events = [];
+    const pid = await gamePid();
+    app.emit('second-instance', {}, ['dnac.exe', '--from-pad', '--desktop']);
+    check('Share: the game window is minimized', await waitFor(() => F.min.has(pid), 3000));
+    await sleep(2500);
+    check('Share: the game keeps running (not suspended), still the playing phase', F.procState(pid) !== 'T' && !has('suspend 1') && getPhase() === 'playing', `${F.procState(pid)} ${getPhase()}`);
+    check('Share: nothing brings the game back by itself', F.min.has(pid) && !has('restore'));
+    check('Share: no menu window made', !getWin());
+    await F.restore(pid); F.focusGame(pid);   // the taskbar button
   }
 
   async function switchCase() {
@@ -130,7 +145,7 @@ module.exports = ({ app, getWin, FILES, readJson, getPhase, getSession }) => {
     try {
       await sleep(1500);
       if (process.env.E2E_QUIT === 'menu') await quitMenuOnlyCase();
-      else { await pauseCase(); await noSuspendCase(); await switchCase(); await quitBothCase(); }
+      else { await pauseCase(); await noSuspendCase(); await desktopCase(); await switchCase(); await quitBothCase(); }
     } catch (e) { log('ERROR', e.stack); results.push(['exception', false]); save(); }
     const failed = results.filter((r) => !r[1]).length;
     log(`${results.length - failed}/${results.length} checks passed (before quit)`);

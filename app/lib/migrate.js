@@ -74,4 +74,31 @@ function fileRun(file) {
   return { list: () => Object.entries(rd()).map(([name, data]) => ({ name, data })), remove(name) { const o = rd(); delete o[name]; wr(o); }, set(name, data) { const o = rd(); o[name] = data; wr(o); return true; } };
 }
 
-module.exports = { OLD_NAME, MARK, migrateRename, moveRunEntry, regRun, fileRun };
+// Games added after the 1.5.0 copy (or edited by hand) can still point their pictures at the old
+// folder (...\Definitely Not PS5 Menu\assets\...). Copy such a file to the same place under the new
+// data folder (when it is not there yet) and point the entry at the copy. The old file stays.
+// Returns the number of paths changed.
+const ART_KEYS = ['icon', 'cover', 'background', 'logo'];
+function relinkArt(doc, { fromDir, dataDir }) {
+  if (!doc || !Array.isArray(doc.games) || !fromDir || !dataDir) return 0;
+  const norm = (p) => String(p).replace(/\//g, '\\').toLowerCase();
+  const from = norm(path.win32.resolve(fromDir)).replace(/\\+$/, '') + '\\';
+  const pj = /^[a-z]:\\|^\\\\/i.test(dataDir) ? path.win32 : path;
+  let n = 0;
+  for (const g of doc.games) {
+    for (const k of ART_KEYS) {
+      const v = g && typeof g[k] === 'string' ? g[k] : '';
+      const fromHere = v && pj === path.win32 ? norm(v).startsWith(from) : v && path.resolve(v).startsWith(path.resolve(fromDir) + path.sep);
+      if (!fromHere) continue;
+      const rel = pj === path.win32 ? v.slice(from.length) : path.relative(fromDir, v);
+      const dst = pj.join(dataDir, rel);
+      try {
+        if (!fs.existsSync(dst)) { if (!fs.existsSync(v)) continue; fs.mkdirSync(pj.dirname(dst), { recursive: true }); fs.copyFileSync(v, dst); }
+        g[k] = dst; n++;
+      } catch { /* leave it as it was */ }
+    }
+  }
+  return n;
+}
+
+module.exports = { relinkArt, OLD_NAME, MARK, migrateRename, moveRunEntry, regRun, fileRun };

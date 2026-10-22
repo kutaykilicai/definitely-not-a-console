@@ -23,6 +23,10 @@
   let running = null;
   let paused = false;      // the running game is paused behind the menu (hold Esc / Xbox button)
   let launching = false;
+  // The game has the screen (hand-off done, or Devam Et): controller input is the game's, the menu
+  // must not act on it while it does not have the focus itself.
+  let gameFront = false;
+  const padAllowed = () => document.hasFocus() || !(gameFront || launching);
   // Opened by holding Esc in a game: that Esc may still be down. Its auto-repeat must not act as
   // "back" here; the guard ends when Esc is released.
   let escGuard = REOPEN === 'home' ? performance.now() + 1500 : 0;
@@ -39,6 +43,7 @@
   const markPath = (ICONS.boot.match(/ d="([^"]+)"/) || [])[1];
   const bootP = new BOOT.Player($('#boot'), { sound: SOUND, markPath });
   // The focused game's own music (music.js); menu sounds duck it.
+  let quietCheck = () => {};   // set once the menu is up (see 'Quiet while an intro plays')
   const MUSIC = new window.ThemeMusic({ sound: SOUND, delayMs: forced.musicDelay != null ? forced.musicDelay : 700 });
   { const play = SOUND.play.bind(SOUND); SOUND.play = (n) => { play(n); if (n !== 'launch') MUSIC.duck(); }; }
   const cOf = (g) => CONS.consoleOf(g);
@@ -450,9 +455,9 @@
 
   function editOverlay(g, preset) {
     const ls = data.lossless && data.lossless.installed;
-    const d = g ? { id: g.id, title: g.title, exe: g.exe || '', args: g.args || '', workingDir: g.workingDir || '', sceSys: g.sceSys || '', losslessScaling: !!g.losslessScaling, suspendInMenu: g.suspendInMenu !== false, hidden: !!g.hidden, badge: g.badge || '', artPaths: g.artPaths,
+    const d = g ? { id: g.id, title: g.title, exe: g.exe || '', args: g.args || '', workingDir: g.workingDir || '', sceSys: g.sceSys || '', losslessScaling: !!g.losslessScaling, suspendInMenu: g.suspendInMenu === true, hidden: !!g.hidden, badge: g.badge || '', artPaths: g.artPaths,
       music: g.music || 'auto', musicShuffle: !!g.musicShuffle, themeBg: g.themeBg || 'auto', accent: g.accent || 'auto' }
-      : { title: '', exe: '', args: '', workingDir: '', sceSys: '', losslessScaling: false, suspendInMenu: true, badge: '', music: 'auto', musicShuffle: false, themeBg: 'auto', accent: 'auto' };
+      : { title: '', exe: '', args: '', workingDir: '', sceSys: '', losslessScaling: false, suspendInMenu: false, badge: '', music: 'auto', musicShuffle: false, themeBg: 'auto', accent: 'auto' };
     const th = (g && g.theme) || {};
     d.console = g ? cOf(g) : CONS.normalize((preset && preset.console) || consoleId);
     const pickExe = async () => {
@@ -487,13 +492,15 @@
       const gf = await api.pick('switchgame'); if (!gf || !gf.path) return;
       d.exe = info.exe; d.args = `-f -g "${gf.path}"`; d.workingDir = info.dir; d.console = 'switch';
       if (!d.title) d.title = gf.title || '';
+      // the game's own picture (from the dump, with the user's keys); otherwise Eden's icon as before
+      if (gf.iconFile && !d.iconFile) { d.iconFile = gf.iconFile; d.clearArt = true; }
       o.render();
     };
     const dirMenu = () => pushOverlay(listOverlay({ style: { left: '560px', top: '380px' }, entries: [
       { label: t('dirPick'), icon: ICONS.folder, run: async () => { const r = await api.pick('folder', d.workingDir || d.exe); if (r && r.path) { d.workingDir = r.path; o.render(); } } },
       { label: t('dirReset'), icon: ICONS.check, run: () => { d.workingDir = ''; o.render(); } },
     ] }));
-    const srcName = (x) => ({ picked: t('srcPicked'), user: t('srcUserMusic'), sce: t('srcSce'), 'sce-pending': t('srcScePending'), 'sce-noffmpeg': t('srcSceNoFf'), folder: t('srcFolder') }[x] || t('srcNone'));
+    const srcName = (x) => ({ picked: t('srcPicked'), user: t('srcUserMusic'), sce: t('srcSce'), 'sce-pending': t('srcScePending'), 'sce-noffmpeg': t('srcSceNoFf'), folder: t('srcFolder'), video: t('srcVideo'), 'video-pending': t('srcScePending') }[x] || t('srcNone'));
     const musicLabel = () => d.music === 'off' ? t('musicOffOpt') : Array.isArray(d.music) ? `${d.music.length === 1 ? baseName(d.music[0]) : d.music.length + ' ' + t('files')}${d.musicShuffle ? ' · ' + t('musicShuffle') : ''}` : `${t('musicAuto')} · ${srcName(th.musicSource)}`;
     const musicMenu = () => pushOverlay(listOverlay({ style: { left: '560px', top: '420px' }, entries: [
       { label: t('musicAuto'), icon: ICONS.check, run: () => { d.music = 'auto'; o.render(); if (th.musicSource === 'sce-noffmpeg') toast(t('ffmpegMissing'), t('ffmpegHint')); } },
@@ -633,6 +640,8 @@
       { label: t('fullscreen'), icon: ICONS.desktop, value: st.fullscreen !== false ? t('on') : t('off'), stay: true, run: () => set('fullscreen', data.settings.fullscreen === false) },
       { label: t('homeEsc'), icon: ICONS.pad, value: st.homeEsc !== false ? t('on') : t('off'), stay: true, run: () => set('homeEsc', data.settings.homeEsc === false) },
       { label: t('homeEscMs'), icon: ICONS.clock, value: holdLabel(st.homeEscMs), stay: true, run: () => set('homeEscMs', nextHold(data.settings.homeEscMs)) },
+      { label: t('homeGuide'), icon: ICONS.pad, value: st.homeGuide !== false ? t('on') : t('off'), stay: true, run: () => { set('homeGuide', data.settings.homeGuide === false); toast(t('homeGuide'), t('homeGuideHint')); } },
+      { label: t('shareDesktop'), icon: ICONS.pad, value: st.shareDesktop !== false ? t('on') : t('off'), stay: true, run: () => { set('shareDesktop', data.settings.shareDesktop === false); toast(t('shareDesktop'), t('shareDesktopHint')); } },
       { label: t('homePad'), icon: ICONS.pad, value: st.homePad !== false ? t('on') : t('off'), stay: true, run: () => set('homePad', data.settings.homePad === false) },
       { label: t('homePadMs'), icon: ICONS.clock, value: holdLabel(st.homePadMs), stay: true, run: () => set('homePadMs', nextHold(data.settings.homePadMs)) },
       { label: t('exitMenu'), icon: ICONS.power, danger: true, run: () => api.window('quit') },
@@ -875,7 +884,7 @@
     if (running && running === g.id) { const r = await api.window('hide'); if (r !== 'none') return; running = null; paused = false; }
     if (!g.exe) { SOUND.play('error'); toast(t('launchFailed'), t('missingExe'), g.art && g.art.icon); return; }
     if (running && !opts.replace) { switchDialog(g); return; }
-    launching = true;
+    launching = true; quietCheck();   // the theme music goes quiet with the launch itself
     const b = $('.btn.primary'); b.classList.add('press'); setTimeout(() => b.classList.remove('press'), 140);
     SOUND.play('launch');
     const bo = $('#blackout'); bo.classList.add('fast'); bo.classList.remove('off');
@@ -984,17 +993,21 @@
     if (data.boot) data.boot.shown = { ...(data.boot.shown || {}), [kind]: true };
     if (api.bootShown) api.bootShown(kind);
     const files = (data.boot && data.boot.files && data.boot.files[kind]) || {};
-    return bootP.play(kind, files, { volume: SOUND.volume, muted: !SOUND.enabled, text: t('bootWarn'), ...opts });
+    const p = bootP.play(kind, files, { volume: SOUND.volume, muted: !SOUND.enabled, text: t('bootWarn'), ...opts });
+    quietCheck();   // the intro silences the theme music at once, not on the next 150 ms tick
+    return p;
   }
   // The first time a console menu comes up in this run its boot intro plays first: it covers the
   // screen, the menu is switched underneath without the slide, and the intro fades into it.
   function bootSwitch(to) {
     switching = true; guard.start(performance.now(), SWITCH_MS);
     ensureFor(to);
+    MUSIC.stop(true);   // the previous menu's game music ends with the switch
     playBoot(to, { fadeIn: 260, onCovered: () => {
       consoleId = to;
       stageFor(to);
       if (to === 'ps5') { layoutRow(true); applyZone(); } else if (to === 'x360' && xdash) xdash.layout(true); else if (to === 'switch' && ndash) ndash.layout(true);
+      themeFocus(false);   // the new menu's focused game: its music waits for the intro to end
       api.saveState({ console: to });
       window.__ps5switches = (window.__ps5switches || 0) + 1;
     } }).then(() => { switching = false; guard.start(performance.now(), 0); });
@@ -1028,6 +1041,9 @@
     consoleId = to;
     stageFor(to);
     if (to === 'ps5') { layoutRow(true); applyZone(); }
+    // one theme player for all three menus: the old menu's track fades out now, the focused
+    // tile of the new one (if it has music) starts after the usual short pause
+    themeFocus(false);
     api.saveState({ console: to });
     window.__ps5switches = (window.__ps5switches || 0) + 1;
     a2.finished.catch(() => {}).then(() => {
@@ -1117,7 +1133,8 @@
     for (const p of pads) {
       if (!p || !p.connected) continue;
       const m = mappers[p.index] || (mappers[p.index] = new INPUT.PadMapper({ prime: true }));
-      const acts = m.update(p.buttons, p.axes, now);
+      const acts = m.update(p.buttons, p.axes, now);   // always fed, so a press during the game is not seen as new later
+      if (!padAllowed()) continue;
       if (acts.length) { setMode('pad'); document.body.classList.add('nocursor'); }
       for (const a of acts) dispatch(a);
     }
@@ -1201,13 +1218,13 @@
   }
 
   api.on('game-started', (d) => { if (!d || !d.seamless) setTimeout(() => launchScreen('black'), 400); });
-  api.on('game-error', (d) => { running = null; launching = false; launchScreen('off'); $('#blackout').classList.add('off'); toast(t('launchFailed'), d.message); });
+  api.on('game-error', (d) => { gameFront = false; running = null; launching = false; launchScreen('off'); $('#blackout').classList.add('off'); toast(t('launchFailed'), d.message); });
   // The game window is in front: the launch screen becomes the black backdrop behind it.
   api.on('launch-progress', (d) => launchProgress(d));
-  api.on('game-handoff', () => { $('#blackout').classList.remove('off'); launchScreen('black'); });
-  api.on('game-returning', () => { closeAll(); $('#blackout').classList.remove('off'); launchScreen('busy'); });
-  api.on('game-resumed', () => { closeAll(); paused = false; $('#blackout').classList.add('fast'); $('#blackout').classList.remove('off'); launchScreen('black'); });
-  api.on('game-paused', (d) => { if (d && d.id) { running = d.id; paused = true; layoutRow(true); renderHero(); } });
+  api.on('game-handoff', () => { gameFront = true; $('#blackout').classList.remove('off'); launchScreen('black'); });
+  api.on('game-returning', () => { gameFront = false; closeAll(); $('#blackout').classList.remove('off'); launchScreen('busy'); });
+  api.on('game-resumed', () => { gameFront = true; closeAll(); paused = false; $('#blackout').classList.add('fast'); $('#blackout').classList.remove('off'); launchScreen('black'); });
+  api.on('game-paused', (d) => { gameFront = false; if (d && d.id) { running = d.id; paused = true; layoutRow(true); renderHero(); } });
   api.on('confirm-quit', (d) => quitDialog(d));
   api.on('updates-changed', (v) => onUpdatesChanged(v));
   api.on('pad-battery', (b) => padBattery(b));
@@ -1218,11 +1235,11 @@
     const f = focusedGame(); if (f && f.id === d.id) themeFocus(true);
   });
   // Home over a running game (Ctrl+Alt+Home, Alt+Tab to the menu).
-  api.on('show-home', (d) => {
+  api.on('show-home', (d) => { gameFront = false;
     launchScreen('off'); const bo = $('#blackout'); bo.classList.remove('fast'); bo.classList.add('off');
     if (d && d.id) { running = d.id; paused = !!d.paused; nav.zone = 'row'; if (nav.tab !== 'games') { nav.tab = 'games'; } refresh(d.id); }
   });
-  api.on('game-exited', async (d) => {
+  api.on('game-exited', async (d) => { gameFront = false;
     running = null; paused = false;
     const fresh = await api.init(); data = fresh; applySettings();
     nav.zone = 'row'; nav.tab = 'games'; closeAll();
@@ -1255,10 +1272,11 @@
     MUSIC.restore(data.state && data.state.musicPos);
     // Quiet while an intro plays, a game starts or runs, or the menu is hidden.
     let quiet = null;
-    setInterval(() => {
+    quietCheck = () => {
       const q = !!(bootP.on || $('#intro').classList.contains('on') || launching || running || $('#launch').classList.contains('on') || document.hidden);
       if (q !== quiet) { if (quiet !== null || q) MUSIC.hold(q); quiet = q; if (!q) later('continue', 900, () => { if (!quiet && !overlays.length && !switching) continueCard(); }); }
-    }, 150);
+    };
+    setInterval(quietCheck, 150);
     if (forced.tab) nav.tab = forced.tab;
     consoleId = CONS.normalize(forced.console || (data.state && data.state.console));
     if (forced.scrim === false) stage.classList.add('noscrim');

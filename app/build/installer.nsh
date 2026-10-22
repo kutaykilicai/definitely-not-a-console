@@ -12,5 +12,8 @@
   !insertmacro dnacStopPadwatch
 !macroend
 !macro customUnInstall
-  DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Definitely Not a Console - Kumanda"
+  ; an update runs the old uninstaller first: keep the start-up entry then (the path stays the same)
+  ${ifNot} ${isUpdated}
+    DeleteRegValue HKCU "Software\Microsoft\Windows\CurrentVersion\Run" "Definitely Not a Console - Kumanda"
+  ${endIf}
 !macroend

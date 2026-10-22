@@ -563,6 +563,29 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
         info.x360Music = await mu();
         if (process.env.QA_SHOT) fs.writeFileSync(`${process.env.QA_SHOT}/x360_theme.png`, (await win.webContents.capturePage()).toPNG());
         check('X360: its music plays (after the setting came back on)', info.x360Music.id === 'muz-x', JSON.stringify(info.x360Music));
+        // one theme player for all menus: a menu switch ends the old menu's track at once
+        await waitFor(async () => (await mu()).playing, 3000, 50);
+        await js('window.__ps5.musicEvents.length = 0');
+        await press('consoleNext'); await sleep(250);
+        const ms1 = await mu(); e = await ev();
+        check('X360 -> Switch: the Xbox game\'s music stops right away (not over the Switch menu)', ms1.id !== 'muz-x' && /stop:/.test(e), JSON.stringify(ms1) + ' ' + e);
+        await settle();
+        await js('(() => { const d = window.__ps5.ndash; d.nav.row = "games"; d.nav.i.games = d.tiles.findIndex((x) => x.game && x.game.id === "muz-s"); d.layout(false); return true; })()');
+        await waitFor(async () => (await mu()).id === 'muz-s' && (await mu()).playing, 4000, 50);
+        info.switchMusic = await mu();
+        check('Switch: the focused game\'s music plays', info.switchMusic.id === 'muz-s' && info.switchMusic.playing, JSON.stringify(info.switchMusic));
+        await press('consolePrev'); await sleep(250);
+        const ms2 = await mu();
+        check('Switch -> X360: the Switch music stops right away', ms2.id !== 'muz-s', JSON.stringify(ms2));
+        await settle(); await waitFor(async () => (await mu()).id === 'muz-x', 3000, 50);
+        check('back on X360: the focused Xbox game\'s music comes back', (await mu()).id === 'muz-x');
+        await press('consolePrev'); await sleep(250);
+        const ms3 = await mu();
+        check('X360 -> PS5: the Xbox music stops right away', ms3.id !== 'muz-x', JSON.stringify(ms3));
+        await settle(); await sleep(1200);
+        const g5 = await js('(() => { const it = window.__ps5.items[window.__ps5.nav.row]; return it && it.id; })()');
+        const ms4 = await mu();
+        check('on PS5: only the focused PS5 tile\'s music (or quiet)', ms4.id === null || ms4.id === g5, `${g5} ${JSON.stringify(ms4)}`);
       }
       if (MODE === 'soak') {
         const N = Number(process.env.QA_SOAK || 500);

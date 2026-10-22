@@ -151,7 +151,8 @@ class WinHelper {
   suspend(pids) { return this.request(`suspend ${pids.join(',')}`); }
   resume(pids) { return this.request(`resume ${pids === 'all' ? 'all' : pids.join(',')}`); }
   term(pids) { return this.request(`term ${pids.join(',')}`); }
-  watch(o) { return this.request(`watch ${o.esc ? 1 : 0} ${Math.round(o.escMs || 1000)} ${o.pad ? 1 : 0} ${Math.round(o.padMs || 1000)}`); }
+  // pad: false/0 off, true/1 hold Guide or View+Menu, 2 hold View+Menu (dnac-padwatch has the Guide button), 3 that and one Guide press
+  watch(o) { const pad = o.pad === true ? 1 : Number(o.pad) || 0; return this.request(`watch ${o.esc ? 1 : 0} ${Math.round(o.escMs || 1000)} ${pad} ${Math.round(o.padMs || 1000)}`); }
   unwatch() { return this.request('unwatch'); }
   battery() { return this.request('battery'); }
   // Quitting: the helper resumes anything it paused before it exits.

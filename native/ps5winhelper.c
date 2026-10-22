@@ -15,8 +15,10 @@
 //   resume <pid,pid,...|all>           continue them again (NtResumeProcess)
 //   term <pid,pid,...>                 end processes (TerminateProcess), last resort after close
 //   watch <esc> <escMs> <pad> <padMs>  while a game runs: report holding Esc (low-level keyboard hook
-//                                      that never swallows keys) or the controller's Guide button /
-//                                      Back+Start (XInput polling) as {"event":"home","src":...}
+//                                      that never swallows keys) or the controller (XInput polling) as
+//                                      {"event":"home","src":...}. pad: 0 off, 1 hold Guide or Back+Start,
+//                                      2 hold Back+Start only (dnac-padwatch takes the Guide button),
+//                                      3 hold Back+Start, and one press of Guide (src "guide")
 //   unwatch                            stop that (the hook is removed)
 //   quit
 //
@@ -142,15 +144,24 @@ static int cmd_fg(HWND h) {
   if (!IsWindow(h)) return 0;
   if (GetForegroundWindow() == h) return 1;
   if (IsIconic(h)) ShowWindow(h, SW_RESTORE);
+  AllowSetForegroundWindow(ASFW_ANY);
   if (SetForegroundWindow(h) && GetForegroundWindow() == h) return 1;
   // Foreground lock: an Alt tap counts as input from us, which lets SetForegroundWindow through.
   tap_alt();
   if (SetForegroundWindow(h) && GetForegroundWindow() == h) return 1;
+  // Last resort: join the input queues of the current foreground window and of the target, so
+  // Windows treats the switch as coming from the active app; activate and focus inside them.
   HWND cur = GetForegroundWindow();
-  DWORD me = GetCurrentThreadId(), other = cur ? GetWindowThreadProcessId(cur, NULL) : 0;
-  if (other && other != me) AttachThreadInput(me, other, TRUE);
-  BringWindowToTop(h); SetForegroundWindow(h);
-  if (other && other != me) AttachThreadInput(me, other, FALSE);
+  DWORD me = GetCurrentThreadId(), other = cur ? GetWindowThreadProcessId(cur, NULL) : 0, target = GetWindowThreadProcessId(h, NULL);
+  int a1 = other && other != me && AttachThreadInput(me, other, TRUE);
+  int a2 = target && target != me && target != other && AttachThreadInput(me, target, TRUE);
+  SetWindowPos(h, HWND_TOP, 0, 0, 0, 0, SWP_NOMOVE | SWP_NOSIZE | SWP_SHOWWINDOW);
+  BringWindowToTop(h); SetForegroundWindow(h); SetActiveWindow(h); SetFocus(h);
+  if (a2) AttachThreadInput(me, target, FALSE);
+  if (a1) AttachThreadInput(me, other, FALSE);
+  if (GetForegroundWindow() == h) return 1;
+  SwitchToThisWindow(h, TRUE);
+  Sleep(30);
   return GetForegroundWindow() == h;
 }
 
@@ -246,7 +257,7 @@ typedef DWORD (WINAPI *xget_t)(DWORD, xstate_t *);
 static xget_t g_xget; static int g_xguide; static const char *g_xdll = "";
 static volatile LONG g_watch_on, g_esc_down;
 static int g_esc_on = 1, g_pad_on = 1; static unsigned g_esc_ms = 1000, g_pad_ms = 1000;
-static hold_t g_hesc, g_hpad;
+static hold_t g_hesc, g_hpad; static int g_gdown;
 static HHOOK g_hook; static DWORD g_wtid; static HANDLE g_wready;
 static unsigned long long g_pad_next[4]; static int g_pad_conn[4];
 #define WM_ARM (WM_APP + 1)
@@ -266,8 +277,10 @@ static void load_xinput(void) {
 }
 
 // Is the home combination held on any controller? Polling a slot with no controller is slow, so
-// empty slots are only checked every two seconds.
+// empty slots are only checked every two seconds. *guide: the Guide button is down on any of them.
+static int g_guide_now;
 static int pad_held(unsigned long long now) {
+  g_guide_now = 0;
   if (!g_xget) return 0;
   int held = 0;
   for (DWORD i = 0; i < 4; i++) {
@@ -276,6 +289,8 @@ static int pad_held(unsigned long long now) {
     if (g_xget(i, &st) != 0) { g_pad_conn[i] = 0; g_pad_next[i] = now + 2000; continue; }
     g_pad_conn[i] = 1;
     WORD b = st.pad.wButtons; if (!g_xguide) b &= (WORD)~PAD_GUIDE;
+    if (b & PAD_GUIDE) g_guide_now = 1;
+    if (g_pad_on >= 2) b &= (WORD)~PAD_GUIDE;      // Guide: a press (3) or dnac-padwatch (2), not a hold
     if (pad_home_pressed(b)) held = 1;
   }
   return held;
@@ -327,6 +342,7 @@ static DWORD WINAPI watch_thread(LPVOID p) {
       InterlockedExchange(&g_esc_down, (GetAsyncKeyState(VK_ESCAPE) & 0x8000) ? 1 : 0);
       hold_block_until_release(&g_hesc, g_esc_down);       // still held from the menu: release first
       hold_block_until_release(&g_hpad, pad_held(now));
+      g_gdown = g_guide_now;                               // a Guide press still down from the menu does not count
       InterlockedExchange(&g_watch_on, 1);
     } else if (m.message == WM_DISARM) {
       InterlockedExchange(&g_watch_on, 0);
@@ -336,6 +352,7 @@ static DWORD WINAPI watch_thread(LPVOID p) {
       unsigned long long now = GetTickCount64();
       if (g_esc_on && hold_step(&g_hesc, (int)g_esc_down, now, g_esc_ms)) fire("esc");
       if (g_pad_on && hold_step(&g_hpad, pad_held(now), now, g_pad_ms)) fire("pad");
+      else if (g_pad_on == 3) { int press = g_guide_now && !g_gdown; g_gdown = g_guide_now; if (press) fire("guide"); }
     }
   }
   return 0;
@@ -343,7 +360,7 @@ static DWORD WINAPI watch_thread(LPVOID p) {
 
 static void cmd_watch(const char *a, const char *b, const char *c, const char *d) {
   g_esc_on = a && atoi(a); g_esc_ms = b ? (unsigned)atoi(b) : 1000;
-  g_pad_on = c && atoi(c); g_pad_ms = d ? (unsigned)atoi(d) : 1000;
+  g_pad_on = c ? atoi(c) : 0; if (g_pad_on < 0 || g_pad_on > 3) g_pad_on = 1; g_pad_ms = d ? (unsigned)atoi(d) : 1000;
   if (g_esc_ms < 200) g_esc_ms = 200;
   if (g_pad_ms < 200) g_pad_ms = 200;
   if (!g_wtid) {

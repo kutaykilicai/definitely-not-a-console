@@ -7,13 +7,18 @@ const ok = async (name, fn) => { await fn(); n++; console.log('ok', name); };
 
 (async () => {
   await ok('settings: both triggers on by default, 1 s hold, bad values fall back', () => {
-    assert.deepEqual(H.triggers({}), { esc: true, escMs: 1000, pad: true, padMs: 1000 });
-    assert.deepEqual(H.triggers({ homeEsc: false, homeEscMs: 1500, homePad: false, homePadMs: 'x' }), { esc: false, escMs: 1500, pad: false, padMs: 1000 });
+    // 1.5.1: the Xbox button is one press; the helper reads it (3) unless dnac-padwatch runs (2: hold View+Menu only)
+    assert.deepEqual(H.triggers({}), { esc: true, escMs: 1000, pad: 3, padMs: 1000 });
+    assert.deepEqual(H.triggers({}, { guideByPadwatch: true }), { esc: true, escMs: 1000, pad: 2, padMs: 1000 });
+    assert.deepEqual(H.triggers({ homePad: false }, { guideByPadwatch: true }).pad, 0);
+    assert.deepEqual(H.triggers({ homePad: false }).pad, 3);
+    assert.deepEqual(H.triggers({ homeGuide: false }).pad, 1);   // as before 1.5.1: hold Xbox or View+Menu
+    assert.deepEqual(H.triggers({ homeEsc: false, homeEscMs: 1500, homePad: false, homeGuide: false, homePadMs: 'x' }), { esc: false, escMs: 1500, pad: 0, padMs: 1000 });
     assert.equal(H.holdMs(50), 1000); assert.equal(H.holdMs(99999), 1000);
     assert.deepEqual([600, 1000, 1500, 2000].map(H.nextHold), [1000, 1500, 2000, 600]);
   });
-  await ok('per-game pause toggle defaults to on', () => {
-    assert.equal(H.suspendWanted({}), true); assert.equal(H.suspendWanted({ suspendInMenu: true }), true);
+  await ok('per-game pause toggle defaults to off (1.5.1: the game keeps running behind the menu)', () => {
+    assert.equal(H.suspendWanted({}), false); assert.equal(H.suspendWanted({ suspendInMenu: true }), true);
     assert.equal(H.suspendWanted({ suspendInMenu: false }), false); assert.equal(H.suspendWanted(null), false);
   });
   await ok('pause list: the game tree only, never Windows/Steam/LS/the menu', () => {
@@ -91,9 +96,9 @@ const ok = async (name, fn) => { await fn(); n++; console.log('ok', name); };
     proc.stdout.write('{"ok":true,"n":1}\n{"event":"home","src":"esc"}\n'); proc.stdout.write('{"ok":true,"n":2}\n');
     assert.equal((await p1).n, 1); assert.equal((await p2).n, 2);
     assert.deepEqual(events, [{ event: 'home', src: 'esc' }]);
-    h.watch({ esc: true, escMs: 1500, pad: false }); h.suspend([5, 6]); h.resume('all'); h.place(9, { x: 0, y: 0, w: 2560, h: 1440 });
-    assert.deepEqual(written, ['a\n', 'b\n', 'watch 1 1500 0 1000\n', 'suspend 5,6\n', 'resume all\n', 'place 9 0 0 2560 1440\n']);
-    proc.stdout.write('{"ok":true}\n{"ok":true}\n{"ok":true}\n{"ok":true}\n');
+    h.watch({ esc: true, escMs: 1500, pad: false }); h.watch({ esc: false, pad: 2, padMs: 600 }); h.watch({ esc: true, pad: true }); h.suspend([5, 6]); h.resume('all'); h.place(9, { x: 0, y: 0, w: 2560, h: 1440 });
+    assert.deepEqual(written, ['a\n', 'b\n', 'watch 1 1500 0 1000\n', 'watch 0 1000 2 600\n', 'watch 1 1000 1 1000\n', 'suspend 5,6\n', 'resume all\n', 'place 9 0 0 2560 1440\n']);
+    proc.stdout.write('{"ok":true}\n{"ok":true}\n{"ok":true}\n{"ok":true}\n{"ok":true}\n{"ok":true}\n');
   });
   console.log(`\n${n} homeflow tests passed`);
 })().catch((e) => { console.error(e); process.exit(1); });

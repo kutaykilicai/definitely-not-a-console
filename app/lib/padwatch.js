@@ -29,6 +29,9 @@ class PadWatch {
     this.write('padwatch.txt', [...names].sort().join('\n') + '\n');
   }
   gameState(on) { this.write('menu-state.txt', on ? 'game' : 'menu'); }
+  // Ayarlar > Xbox düğmesi menüyü açar (cache\guide.txt, read on every press)
+  guide(on) { this.write('guide.txt', on ? '1' : '0'); }
+  share(on) { this.write('share.txt', on ? '1' : '0'); }
   closedByUser() { this.write('menu-closed.txt', String(Date.now())); }
   registered() { return (this.reg.list() || []).some((e) => e.name === RUN_NAME); }
   // turn on: Run entry for the next logins, and start it now

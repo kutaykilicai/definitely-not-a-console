@@ -5,6 +5,7 @@
 //     | assets\games\<id>\music*.{mp3,ogg,m4a,opus,wav,flac} (several = a playlist)
 //     | the PS4 dump's sce_sys\snd0.at9 (ATRAC9, turned into Ogg Opus once with the user's ffmpeg,
 //       kept in <data>\cache\theme) | a theme/menu/music/bgm file in the game's own folder
+//     | the sound of the game's attract/title video (Attract.bik ...), converted once like snd0.at9
 //   accent colour: picked by hand (game.accent) or taken from the background/cover picture.
 const fs = require('fs');
 const path = require('path');
@@ -33,6 +34,20 @@ function folderMusic(game) {
     if (out.length) break;
   }
   return out;
+}
+// The game's attract-mode / title video (what the game plays on its own title screen), whose sound
+// track is the closest thing to a theme a game without one has (Naruto: Rise of a Ninja PC:
+// game\Attract.bik). Its audio is turned into Ogg once, like snd0.at9.
+const VIDEO = /\.(bik|bk2|mp4|wmv|webm|usm)$/i;
+function attractVideo(game) {
+  const dir = game.workingDir || (game.exe ? P.dirname(game.exe) : '');
+  if (!dir || /[\\/](desktop|masaüstü)[\\/]?$/i.test(dir)) return null;
+  for (const sub of ['', 'game', 'movies', 'movie', 'video', 'videos', 'data']) {
+    const d = sub ? P.join(dir, sub) : dir;
+    const n = listDir(d).filter((x) => VIDEO.test(x) && /^(attract|title|menu)([ _.-].*)?\.[a-z0-9]+$/i.test(x)).sort()[0];
+    if (n) return P.join(d, n);
+  }
+  return null;
 }
 function sceSysOf(game, art) {
   const s = (art && art.sceSys) || game.sceSys || null;
@@ -65,6 +80,12 @@ function resolveMusic(game, art, { userGamesDir, cacheDir }) {
   }
   const f = folderMusic(game);
   if (f.length) return { files: f, source: 'folder' };
+  const v = attractVideo(game);
+  if (v) {
+    const cache = P.join(cacheDir, cacheName(game.id, v));
+    if (exists(cache)) return { files: [cache], source: 'video', at9: v };
+    return { files: [], source: 'video-pending', at9: v, cache };
+  }
   return { files: [], source: null };
 }
 

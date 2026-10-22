@@ -15,6 +15,7 @@ const loadprogress = require('./lib/loadprogress.js');
 const theme = require('./lib/theme');
 const { Updater } = require('./lib/updater');
 const { PadWatch } = require('./lib/padwatch');
+const switchicon = require('./lib/switchicon');
 
 const isWin = process.platform === 'win32';
 const argv = process.argv.slice(1);
@@ -71,6 +72,8 @@ const DEFAULT_SETTINGS = {
   homeEscMs: 1000,
   homePad: true,             // same with the controller's Xbox button (or View+Menu together)
   homePadMs: 1000,
+  homeGuide: true,
+  shareDesktop: true,           // one press of the Xbox button: menu opens / comes up over the game (game keeps running)
   // 1.5: the focused game's own music and picture, like a console
   themeMusic: true,
   switchTheme: 'white',      // Switch HOME Menu: white | black (like the console's Basic White / Basic Black)
@@ -115,8 +118,14 @@ async function loadGames() {
     if (!g.title) g.title = typeof g.exe === 'string' && g.exe ? path.basename(g.exe, path.extname(g.exe)) : g.id;
     if (g.exe != null && typeof g.exe !== 'string') g.exe = '';
   }
+  // pictures still in the old (PS5 Menu) data folder: copied over, entries pointed at the copies
+  if (OLD_DATA && !relinkedOnce) {
+    relinkedOnce = true;
+    try { if (migrate.relinkArt(doc, { fromDir: OLD_DATA, dataDir: DATA })) { try { fs.copyFileSync(FILES.games, `${FILES.games}.bak-relink`); } catch { /* */ } writeJson(FILES.games, doc); } } catch (e) { log('relink', e.message); }
+  }
   return doc;
 }
+let relinkedOnce = false;
 let padwatch = null;   // set below once the Run key is known
 const saveGames = (doc) => { const ok = writeJson(FILES.games, doc); if (padwatch) padwatch.writeList(doc.games); return ok; };
 
@@ -205,9 +214,10 @@ function accentOf(file) {
 }
 function themeOf(g, art) {
   const m = theme.resolveMusic(g, art, { userGamesDir: path.join(USER_ASSETS, 'games'), cacheDir: THEME_CACHE });
-  if (m.source === 'sce-pending') {
-    const queued = converter.add({ id: g.id, at9: m.at9, cache: m.cache }, (ok) => { if (ok) send('theme-update', { id: g.id, music: [fileUrl(m.cache)], source: 'sce' }); });
-    if (!queued && !ffmpegExe()) m.source = 'sce-noffmpeg';
+  if (m.source === 'sce-pending' || m.source === 'video-pending') {
+    const done = m.source === 'sce-pending' ? 'sce' : 'video';
+    const queued = converter.add({ id: g.id, at9: m.at9, cache: m.cache }, (ok) => { if (ok) send('theme-update', { id: g.id, music: [fileUrl(m.cache)], source: done }); });
+    if (!queued && !ffmpegExe()) m.source = done === 'sce' ? 'sce-noffmpeg' : null;
   }
   const pic = art.background || art.cover || art.icon || null;
   return {
@@ -396,6 +406,19 @@ const send = (ch, d) => {
 };
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const log = (...a) => { if (process.env.PS5MENU_DEBUG) console.log('[launch]', ...a); };
+// A short record of each launch's focus hand-off in <data>\logs\launch.log (which window was taken as
+// the game, whether it got the foreground), so "the controller does nothing in the game" can be
+// told apart from a focus problem afterwards. Restarts past 256 KB.
+function flog(...a) {
+  try {
+    const dir = path.join(DATA, 'logs'); fs.mkdirSync(dir, { recursive: true });
+    const f = path.join(dir, 'launch.log');
+    try { if (fs.statSync(f).size > 256 * 1024) fs.unlinkSync(f); } catch { /* */ }
+    const t = new Date(); const p2 = (n) => String(n).padStart(2, '0');
+    fs.appendFileSync(f, `${t.getFullYear()}-${p2(t.getMonth() + 1)}-${p2(t.getDate())} ${p2(t.getHours())}:${p2(t.getMinutes())}:${p2(t.getSeconds())} ${a.map((x) => (typeof x === 'string' ? x : JSON.stringify(x))).join(' ')}\n`);
+  } catch { /* */ }
+  log(...a);
+}
 
 function showLauncher() {
   if (!win) return;
@@ -488,6 +511,20 @@ async function hideLsWindow() {
 async function lsScaling() {
   const snap = await helper.snap(0, [lossless.EXE]);
   return ((snap && snap.windows) || []).some((x) => x.visible && !x.minimized && coversMonitor(x) && !isLsMain(x));
+}
+// After the hand-off the game must really be the foreground window: some controller APIs
+// (Windows.Gaming.Input, and games that ignore input while inactive) only feed the active window. The
+// menu window is gone by now and the black cover cannot take focus; try for up to 3 s.
+async function ensureGameFocus(s, why) {
+  let a = null, tries = 0;
+  for (; tries < 20 && session === s; tries++) {
+    a = await helper.alive(s.hwnd);
+    if (!a || !a.alive || a.isfg) break;
+    await helper.foreground(s.hwnd);
+    await sleep(150);
+  }
+  flog(why, s.game.id, { exe: a && a.win && a.win.exe, cls: a && a.win && a.win.cls, w: a && a.win && a.win.w, h: a && a.win && a.win.h, fg: !!(a && a.isfg), tries, fgwin: a && a.fg });
+  return a;
 }
 // The game must stay the foreground window: the controller only drives the focused window.
 async function keepGameFocused(s) {
@@ -635,7 +672,7 @@ async function handoff(s) {
   phase = 'playing';
   closeMenuForGame();
   await helper.foreground(w.hwnd);
-  await keepGameFocused(s);
+  await ensureGameFocus(s, 'launch');
   armHome(s);
   watchPlaying(s);
   const how = await engageLossless(s, 'launch');
@@ -697,11 +734,14 @@ const HUNG_MS = Number(process.env.PS5MENU_HUNG_MS) || 10e3;
 const LOAD_NOTICE_MS = Number(process.env.PS5MENU_LOAD_NOTICE_MS) || 2500;
 
 async function watchPlaying(s) {
-  let misses = 0;
+  let misses = 0; const t0 = Date.now(); let refocused = 0;
   while (session === s && runner.running) {
     await sleep(150);
     if (phase !== 'playing' || session !== s) continue;
     const a = await helper.alive(s.hwnd);
+    // First seconds of play: an emulator that shows a second window or a late helper process can
+    // take the focus away; give it back to the game (a few times at most, never later on).
+    if (a && a.alive && !a.isfg && !a.minimized && !s.desktopAt && Date.now() - t0 < 8000 && refocused < 3 && !s.busy) { refocused++; await helper.foreground(s.hwnd); flog('refocus', s.game.id, { fgwin: a.fg }); }
     if (a && a.alive && a.win && coversMonitor(a.win) && state.windowModes[s.game.id] !== 'fullscreen') {
       // It went fullscreen after the handoff: next time wait for that before fading out.
       state.windowModes[s.game.id] = 'fullscreen'; writeJson(FILES.state, state);
@@ -731,10 +771,12 @@ async function watchPlaying(s) {
 // suspended. 'overlay' is the same for a game that is still starting (no window yet).
 function armHome(s) {
   if (!seamless() || !helper.watch || session !== s) return;
-  const t = homeflow.triggers(settings);
+  const t = homeflow.triggers(settings, { guideByPadwatch: guideByPadwatch() });
   if (!t.esc && !t.pad) { helper.unwatch(); return; }
   helper.watch(t).then((r) => { s.watchInfo = r; log('watch', r); });
 }
+// dnac-padwatch handles the Xbox button whenever it runs (Ayarlar > Kumanda bağlanınca menüyü aç).
+const guideByPadwatch = () => !!padwatch && settings.padOpen !== false && (isWin || !!process.env.PS5MENU_FAKE_REG);
 function disarmHome() { if (helper.unwatch && (isWin || FAKE)) helper.unwatch(); }
 helper.onEvent = (e) => { if (e && e.event === 'home') onHomeTrigger(e.src); };
 
@@ -743,7 +785,7 @@ async function onHomeTrigger(src) {
   if (!s || phase !== 'playing' || s.busy) return;
   const snap = await helper.snap(s.pid, s.watchNames);
   const ls = await helper.snap(0, [lossless.EXE]);
-  if (!homeflow.triggerAccepted(snap, s.hwnd, ls)) { log('home ignored: the game is not in front', src); armHome(s); return; }
+  if (src !== 'guide' && !homeflow.triggerAccepted(snap, s.hwnd, ls)) { log('home ignored: the game is not in front', src); armHome(s); return; }
   log('home from', src);
   goHome(s);
 }
@@ -896,6 +938,28 @@ function homeShortcut() {
   openMenu(null);
 }
 
+// Xbox button (one press): over a running game the menu comes up and the game keeps running (unless
+// pausing is switched on for that game); otherwise the menu comes to the front and gets the focus
+// (the controller only drives the focused window).
+function guideShortcut() {
+  log('guide', phase);
+  if (session && phase === 'playing' && seamless() && session.hwnd) { if (!session.busy) goHome(session); return; }
+  homeShortcut();
+  setTimeout(() => { if (win && !win.isDestroyed() && (isWin || FAKE) && helper.available) helper.foreground(hwndOf(win)).catch(() => {}); }, 150);
+}
+
+// The Share button (read by dnac-padwatch.exe, which also shows the Windows desktop): the menu and
+// a running game go down to the taskbar; the game keeps running (no suspend), the phase does not
+// change, so the Xbox button or the taskbar brings either back. Ayarlar > Paylaş tuşu masaüstüne.
+async function desktopShortcut() {
+  log('desktop', phase); flog('desktop', { phase, game: session && session.game.id });
+  if (settings.shareDesktop === false) return;
+  const s = session;
+  if (s) s.desktopAt = Date.now();   // watchPlaying: no refocus after this
+  if (s && s.hwnd && (isWin || FAKE) && helper.available) { try { await helper.minimize(s.hwnd); } catch { /* */ } }
+  if (win && !win.isDestroyed()) { if (win.isFullScreen && win.isFullScreen()) { /* minimize keeps the full-screen state for later */ } win.minimize(); }
+}
+
 async function launchGame(g) {
   if (runner.running) return { ok: false, error: 'Zaten bir oyun açık.' };
   const smooth = seamless();
@@ -975,6 +1039,16 @@ function edenInfo() {
   }
   return { dir: dirs[1], exe: path.join(dirs[1], 'eden.exe'), exists: false };
 }
+// Switch game picture: extracted into cache\switch-icons\<file name>\icon.jpg; game-save copies it
+// into the game's assets folder like a picked image.
+async function switchIconFor(file) {
+  const eden = edenInfo();
+  const keys = process.env.PS5MENU_FAKE_KEYS ? { prod: process.env.PS5MENU_FAKE_KEYS, title: [] } : switchicon.findKeys(eden.dir);
+  const outDir = path.join(DATA, 'cache', 'switch-icons', path.basename(file).replace(/[^\w.-]+/g, '_').slice(0, 80));
+  const r = await switchicon.extractIcon({ game: file, outDir, keys });
+  log('switch icon', r.ok ? r.from : r.reason);
+  return r;
+}
 const switchTitle = (f) => path.basename(f).replace(/\.(nsp|xci|nsz|xcz|nca|nro|nso)$/i, '').replace(/\s*[[(][^\])]*[\])]/g, '').replace(/[_]+/g, ' ').trim() || path.basename(f);
 ipcMain.handle('pick', async (_e, kind, current) => {
   if (kind === 'edenInfo') return edenInfo();
@@ -1002,7 +1076,13 @@ ipcMain.handle('pick', async (_e, kind, current) => {
     }
     if (kind === 'scesys') return readSceSys(f);
     if (kind === 'audio') return { paths: r.filePaths.slice() };
-    if (kind === 'switchgame') return { path: f, title: switchTitle(f) };
+    if (kind === 'switchgame') {
+      // The game's own HOME Menu picture from the dump and the user's keys (lib/switchicon.js).
+      const out = { path: f, title: switchTitle(f) };
+      const ic = await switchIconFor(f).catch((e) => ({ ok: false, reason: e.message }));
+      if (ic && ic.ok) { out.iconFile = ic.file; if (ic.title) out.title = ic.title; } else out.iconReason = ic && ic.reason;
+      return out;
+    }
     return { path: f };
   } catch (e) { return { error: e.message }; }
 });
@@ -1038,6 +1118,8 @@ ipcMain.handle('set-setting', (_e, key, value) => {
   settings[key] = value; writeJson(FILES.settings, settings);
   if ((key === 'autostart' || key === 'consoleMode') && isWin) app.setLoginItemSettings({ openAtLogin: !!settings.autostart, path: process.execPath });
   if ((key === 'padOpen' || key === 'consoleMode') && padwatch) padwatch.sync(settings.padOpen !== false);
+  if (key === 'homeGuide' && padwatch) padwatch.guide(settings.homeGuide !== false);
+  if (key === 'shareDesktop' && padwatch) padwatch.share(settings.shareDesktop !== false);
   if (key === 'fullscreen' && win) win.setFullScreen(!!value);
   return { ...settings, username: settings.username || OS_USER };
 });
@@ -1086,7 +1168,14 @@ protocol.registerSchemesAsPrivileged([{ scheme: 'ps5file', privileges: { standar
 
 const single = flag('screenshot') || app.requestSingleInstanceLock();
 if (!single) app.quit();
-app.on('second-instance', () => homeShortcut());
+// dnac-padwatch starts the exe again: "--from-pad --guide" for the Xbox button, "--from-pad" when a
+// controller connects. Both bring the running menu up.
+app.on('second-instance', (_e, argv) => {
+  argv = argv || [];
+  if (argv.includes('--desktop')) desktopShortcut();
+  else if (argv.includes('--guide')) guideShortcut();
+  else homeShortcut();
+});
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
 if (flag('screenshot') || process.env.PS5MENU_SHOT_DPR) app.commandLine.appendSwitch('force-device-scale-factor', process.env.PS5MENU_SHOT_DPR || '1'); // tests: render at 125 % / 150 %
@@ -1104,7 +1193,7 @@ app.whenReady().then(() => {
   // Start the window helper early so the first launch does not wait for it.
   if (seamless()) helper.snap(0, []).catch(() => {});
   updater.start(Number(process.env.PS5MENU_UPDATE_DELAY_MS) || 45e3);
-  if (padwatch) { loadGames().then((d) => padwatch.writeList(d.games)).catch(() => {}); padwatch.gameState(false); try { padwatch.sync(settings.padOpen !== false); } catch (e) { log('padwatch', e.message); } }
+  if (padwatch) { loadGames().then((d) => padwatch.writeList(d.games)).catch(() => {}); padwatch.gameState(false); padwatch.guide(settings.homeGuide !== false); padwatch.share(settings.shareDesktop !== false); try { padwatch.sync(settings.padOpen !== false); } catch (e) { log('padwatch', e.message); } }
   setTimeout(pollBattery, 2500); setInterval(pollBattery, Number(process.env.PS5MENU_BATTERY_MS) || 30e3);
   // Bring the menu back from anywhere (keyboard). Controller PS button is handled in the renderer.
   try { globalShortcut.register('CommandOrControl+Alt+Home', () => homeShortcut()); } catch { /* */ }

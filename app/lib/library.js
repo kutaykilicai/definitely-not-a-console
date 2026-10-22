@@ -50,7 +50,7 @@ function saveEntry(doc, draft) {
   if (!g.workingDir) delete g.workingDir;
   if (!g.sceSys) delete g.sceSys;
   if (!g.losslessScaling) delete g.losslessScaling;
-  if (g.suspendInMenu !== false) delete g.suspendInMenu;   // on by default; only "off" is stored
+  if (g.suspendInMenu !== true) delete g.suspendInMenu;    // off by default since 1.5.1; only "on" is stored
   if (!g.hidden) delete g.hidden;
   // theme (1.5): only what differs from "automatic" is stored
   if (g.music === 'auto' || g.music === '' || g.music == null || (Array.isArray(g.music) && !g.music.length)) delete g.music;

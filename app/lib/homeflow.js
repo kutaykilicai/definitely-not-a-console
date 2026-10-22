@@ -12,12 +12,19 @@ const nextHold = (v) => { const cur = holdMs(v); const i = HOLD_STEPS.findIndex(
 const holdLabel = (v) => `${(holdMs(v) / 1000).toLocaleString('tr-TR', { maximumFractionDigits: 1 })} sn`;
 
 // What the helper should watch for while a game runs.
-function triggers(settings = {}) {
-  return { esc: settings.homeEsc !== false, escMs: holdMs(settings.homeEscMs), pad: settings.homePad !== false, padMs: holdMs(settings.homePadMs) };
+// pad: 0 off | 1 hold the Xbox button or View+Menu (as before 1.5.1) | 2 hold View+Menu, the Xbox
+// button is dnac-padwatch's (one press, also when the menu is closed) | 3 hold View+Menu and one press
+// of the Xbox button, read by the window helper (padwatch is off).
+// guideByPadwatch: the controller watcher runs and handles the Xbox button.
+function triggers(settings = {}, { guideByPadwatch = false } = {}) {
+  const hold = settings.homePad !== false, guide = settings.homeGuide !== false;
+  const pad = guide ? (guideByPadwatch ? (hold ? 2 : 0) : 3) : (hold ? 1 : 0);
+  return { esc: settings.homeEsc !== false, escMs: holdMs(settings.homeEscMs), pad, padMs: holdMs(settings.homePadMs) };
 }
 
-// Per-game: pause (suspend) the game while the menu is up. On unless switched off for that game.
-const suspendWanted = (game) => !!game && game.suspendInMenu !== false;
+// Per-game: pause (suspend) the game while the menu is up. Since 1.5.1 off unless switched on for
+// that game: the game keeps running behind the menu, like on a console.
+const suspendWanted = (game) => !!game && game.suspendInMenu === true;
 
 // Never paused, whatever a game's folder happens to contain: Windows itself, the shell, Steam,
 // Lossless Scaling and this menu.
@@ -37,6 +44,7 @@ function pausePids(snap, excludePids = []) {
   });
 }
 
+// The Xbox button (src "guide") always counts: it is meant to bring the menu up from anywhere.
 // A hold only counts while the game is the active window (or Lossless Scaling's output on top of
 // it), so holding Esc in a browser next to a running game does nothing.
 function triggerAccepted(gameSnap, gameHwnd, lsSnap) {
