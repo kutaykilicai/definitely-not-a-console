@@ -1,10 +1,12 @@
 <div align="center">
 
-<img src="docs/logo.png" width="120" alt="Definitely Not PS5 Menu simgesi">
+<img src="docs/logo.png" width="120" alt="Definitely Not a Console simgesi">
 
-# Definitely Not PS5 Menu
+# Definitely Not a Console
 
-*Kesinlikle bir PS5 menüsü değil. Sadece biraz ona benziyor, o kadar.*
+*Kesinlikle bir konsol değil. Sadece biraz ona benziyor, o kadar.*
+
+<sub>1.5.0 ile adı Definitely Not PS5 Menu'den Definitely Not a Console'a değişti; listen, ayarların ve oynama sürelerin ilk açılışta kendiliğinden taşınır.</sub>
 
 [![Sürüm](https://img.shields.io/github/v/release/kutaykilicai/definitely-not-ps5-menu?label=s%C3%BCr%C3%BCm&color=2f6fd6)](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases/latest)
 [![İndirme](https://img.shields.io/github/downloads/kutaykilicai/definitely-not-ps5-menu/total?label=indirme&color=2f6fd6)](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases)
@@ -33,15 +35,20 @@ Resmi bir ürün değil, hayran işi bir projedir. Sony ile hiçbir bağı yoktu
 - Açılırken uzun süre shader hazırlayan oyunlarda (Shadow of the Colossus PC portu, shadPS4 ile inFAMOUS) yükleme ekranında ilerleme yüzdesi görünür.
 - İkinci menü olarak 2010-2013 dönemi Xbox 360 panosu; yukarı/aşağı ile geçilir.
 - Her menünün ilk açılışında konsol açılışına benzeyen bir intro; istersen kendi videonla, sesinle ya da logonla.
+- Seçili oyunun kendi müziği ve resmi, konsoldaki gibi: PS4 dökümlerinde `sce_sys\snd0.at9` (bilgisayarındaki ffmpeg ile bir kez Ogg'a çevrilir) ve `pic1.png`, diğer oyunlarda oyun klasöründeki ya da senin seçtiğin dosyalar.
+- Kumanda bağlanınca menü kendiliğinden açılır (isteğe bağlı, Ayarlar'dan kapatılır).
+- Oynama istatistikleri: oyun başına toplam süre, son oynama, en uzun oturum, son 7 günün grafiği; açılışta "Devam et" kartı, oyundan çıkınca oturum özeti.
+- Kablosuz kumandanın pil durumu köşede, azalınca bir kez uyarı.
+- PC portları için güncelleme takibi (GitHub sürümleri): tam yedek, tek tuşla güncelle ve geri al, sorunlu görünen sürümleri bekletme.
 - Tek tıkla kurulum, yönetici izni istemez.
 
 ## Kurulum
 
-[Releases](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases/latest) sayfasından `Definitely.Not.PS5.Menu.Setup.1.4.2.exe` dosyasını indirip çalıştır. Kurulum birkaç saniye sürer, yönetici izni istemez, masaüstüne ve Başlat menüsüne kısayol koyar ve bitince menüyü açar.
+[Releases](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases/latest) sayfasından `Definitely.Not.a.Console.Setup.1.5.0.exe` dosyasını indirip çalıştır. Kurulum birkaç saniye sürer, yönetici izni istemez, masaüstüne ve Başlat menüsüne kısayol koyar ve bitince menüyü açar.
 
 Uygulama imzalı olmadığı için Windows ilk açılışta "Windows bilgisayarınızı korudu" uyarısı gösterebilir. O pencerede **Diğer bilgiler** yazısına, ardından **Yine de çalıştır** düğmesine bas. Bunu yalnızca bir kez yapman gerekir.
 
-Kurmadan denemek istersen aynı sayfadaki `Definitely-Not-PS5-Menu-1.4.2-portable.zip` dosyasını bir klasöre çıkarıp içindeki `Definitely Not PS5 Menu.exe` dosyasını açabilirsin.
+Kurmadan denemek istersen aynı sayfadaki `Definitely-Not-a-Console-1.5.0-portable.zip` dosyasını bir klasöre çıkarıp içindeki `Definitely Not a Console.exe` dosyasını açabilirsin.
 
 <table>
 <tr>
@@ -121,6 +128,38 @@ Steam'den [Lossless Scaling](https://store.steampowered.com/app/993090/Lossless_
 
 LS, tam ekran özel (exclusive fullscreen) modda çalışan oyunları ölçekleyemez. Bu yüzden oyunu pencereli ya da kenarlıksız tam ekran moduna alman gerekir.
 
+## Oyunun müziği ve teması
+
+Bir oyunun üzerinde biraz durunca (hızlıca gezerken değil) o oyunun müziği yavaşça açılır; menü sesleri çalarken kısılır, oyun başlayınca susar, oyundan dönünce kaldığı yerden sürer. Müzik şu sırayla aranır:
+
+1. **Oyunu Düzenle > Müzik > Dosya seç** ile seçtiğin dosyalar (birden çok seçersen sırayla ya da karışık çalar).
+2. `%APPDATA%\Definitely Not a Console\assets\games\<oyun>\music.ogg` (ya da `.mp3`, `.wav`, `.opus`, `.m4a`, `.flac`; `music-2.ogg` gibi ek parçalar da olur).
+3. PS4 dökümünün `sce_sys\snd0.at9` dosyası. Bu biçimi tarayıcı çalamadığı için menü onu bilgisayarındaki ffmpeg ile bir kez Ogg Opus'a çevirip `%APPDATA%\Definitely Not a Console\cache\theme` klasörüne koyar. ffmpeg menüyle gelmez; `winget install Gyan.FFmpeg` ile kurabilir ya da `ffmpeg.exe`'yi `%APPDATA%\Definitely Not a Console\tools\` içine koyabilirsin.
+4. Oyun klasöründe `theme`, `menu`, `title`, `music`, `bgm`, `soundtrack` ya da `ost` adlı bir ses dosyası.
+
+Arka plan için PS4 dökümünde `pic1.png`, diğer oyunlarda seçtiğin resim kullanılır; tema rengi resimden kendiliğinden çıkar ya da **Oyunu Düzenle > Tema rengi**'nden seçilir. Xbox 360 menüsünde seçili oyunun resmi panonun arka planı olur. Ayarlar'daki **Oyun müziği**, **Müzik sesi** ve **Oyun teması** satırlarıyla hepsi kapatılabilir; müziği ya da resmi olmayan bir oyunda menü eskisi gibi görünür. Oyunların müzikleri ve resimleri menüyle dağıtılmaz, yalnızca senin bilgisayarındaki dosyalardan okunur.
+
+## Kumanda bağlanınca açılma
+
+Ayarlar'daki **Kumanda bağlanınca menüyü aç** açıksa (varsayılan) Windows'a girişte küçük bir yardımcı (`dnac-padwatch.exe`) başlar ve kumanda bağlanınca menüyü tam ekran açar; menü zaten açıksa öne getirir. Bir oyun, emülatör ya da tam ekran bir uygulama açıkken, menüyü az önce kapattıysan ya da ikinci bir kumanda bağlandığında hiçbir şey yapmaz. Yardımcı sürekli tarama yapmaz, Windows'un aygıt bildirimlerini bekler. Ayar kapatılınca başlangıç kaydı (`HKCU\...\Run`) silinir ve yardımcı kapanır.
+
+Steam açıkken Steam'in "Xbox düğmesine basınca Big Picture'ı aç" seçeneği de açıksa ikisi aynı anda tepki verebilir. Menüyü kullanacaksan Steam > Ayarlar > Kumanda > "Steam düğmesi Big Picture'ı açar" seçeneğini kapat.
+
+Bilgisayarı uykudan kumandayla uyandırmak Windows'ta kablolu ya da Xbox Kablosuz Adaptörüyle bağlı kumandalarda, BIOS ve aygıt ayarları izin veriyorsa çalışır; Bluetooth kumandalar genellikle uyandıramaz.
+
+**Konsol modu** (varsayılan kapalı): Windows ile başlar, "devam etmek için A'ya bas" ekranı olmadan doğrudan menüye girer ve kumanda bağlanınca açılır. Kapatınca değiştirdiği ayarlar eski hâline döner. Windows kabuğunu (Explorer) değiştirmez.
+
+## Port güncellemeleri
+
+Ayarlar > Güncellemeler, kurulu PC portlarının (inFAMOUS shadPS4 derlemesi, Shadow of the Colossus PC, God of War III SpartanPort, Naruto recomp ve sonradan eklediklerin) GitHub sürümlerini günde bir kez, oyun açık değilken kontrol eder. Liste `%APPDATA%\Definitely Not a Console\ports.json` dosyasındadır; ilk açılışta oyun listenden çıkarılır.
+
+- Varsayılan kurulum biçimi **Sadece bildir**: yeni sürüm çıkınca bir bildirim görürsün, hiçbir şey kendiliğinden kurulmaz. Oyun başına **Otomatik kur** açılabilir; o zaman yalnızca bekleme kuralını geçen sürümler, oyun ve emülatör kapalıyken kurulur.
+- Yeni bir sürüm 3 gün bekletilir; bu sürede "çöküyor", "açılmıyor", "AMD" gibi sözcükler geçen yeni bir sorun kaydı açılırsa sürüm **Beklemede** görünür.
+- **Güncelle** önce oyun klasörünün tam yedeğini alır (`port-backups`), indirilen dosyanın boyutunu ve SHA-256'sını denetler, kayıtlarına ve ayarlarına dokunmadan yeni dosyaları koyar, exe'nin yerinde olduğunu doğrular. Bir adım tutmazsa yedek kendiliğinden geri konur. **Geri al** son yedeğe tek adımda döner. En fazla iki eski yedek tutulur.
+- **Yeni portlar**, The Gaming Emporium'un decompilation/recompilation listesinden yeni eklenenleri gösterir (günde bir kez, RSS); kurulu olanlar işaretlenir, hiçbiri kendiliğinden kurulmaz.
+
+GitHub'a hesapsız bağlanılır (saatte 60 istek sınırı); aynı cevaplar önbellekten gelir.
+
 ## Xbox 360 menüsü
 
 PS5 ana ekranının yanında ikinci bir menü olarak 2010-2013 dönemi Xbox 360 panosuna benzeyen bir ekran var. Menüler arasında kumandada çubuklara basarak (L3 önceki, R3 sonraki menü; iki menü olduğu için ikisi de diğerine geçer), klavyede PageUp / PageDown ile geçilir; yeni menü basılan tuşun yönünden kayarak gelir. Yukarı/aşağı her iki menüde de yalnızca o menünün içinde gezinir, PS5 menüsünün gezinmesi 1.3 ile aynıdır. Bir pencere ya da menü açıkken, intro oynarken ve oyun başlatılırken geçiş yapılmaz. Çubukla gezinirken kazara basılan ya da uzun basılı tutulan L3/R3 geçiş yapmaz; Xbox 360 panosunda ayrıca "PS5 Menüsü" kutucuğu da vardır. Oyun listesi iki menüde ortaktır, son kullandığın menü bir sonraki açılışta yine gelir. Oyundan dönünce hangi menüden başlattıysan o açılır.
@@ -129,7 +168,7 @@ PS5 ana ekranının yanında ikinci bir menü olarak 2010-2013 dönemi Xbox 360 
 
 Her menünün ilk açılışında konsolun açılış animasyonuna benzeyen kısa bir intro oynar: program açılırken son kullandığın menünün introsu, o oturumda diğer menüye ilk geçişte de onunki. Her intro bir oturumda bir kez oynar, sonraki geçişler normal kaymayla olur, oyundan dönüşte intro oynamaz. A, B, Enter, Esc, Xbox tuşu ya da tıklama introyu geçer; intro sürerken yön tuşları ve menü değiştirme (L3/R3, PageUp/PageDown) yok sayılır. Ayarlar > **Konsol Açılış İntrosu** satırından kapatılabilir (Her açılışta bir kez / Kapalı).
 
-İstersen introları kendi dosyalarınla değiştirebilirsin. Dosyalar `%APPDATA%\Definitely Not PS5 Menu\intro\` klasörüne konur (klasör yoksa program ilk açılışta oluşturur). Her konsol için sıra şöyledir:
+İstersen introları kendi dosyalarınla değiştirebilirsin. Dosyalar `%APPDATA%\Definitely Not a Console\intro\` klasörüne konur (klasör yoksa program ilk açılışta oluşturur). Her konsol için sıra şöyledir:
 
 1. `ps5-boot.mp4` / `ps5-boot.webm` ya da `x360-boot.mp4` / `x360-boot.webm` varsa video kendi sesiyle tam ekran oynar. Videonun sonu menüye kararmadan geçer (son kare oynamaya devam ederken menünün üstünden yavaşça çekilir, arada siyah kare ya da parlama olmaz). PS5 videosu konsolun "PS düğmesine bas" ekranını da içerdiği için o zaman menünün kendi giriş ekranı ayrıca gösterilmez.
 2. Video yoksa program introyu kendisi çizer. Ses için `ps5-boot.wav/.mp3/.ogg` ya da `x360-boot.wav/.mp3/.ogg`, logo için `ps5-logo.png` ya da `x360-logo.png` (arka planı saydam PNG) kullanılır.
@@ -147,12 +186,12 @@ Videonun başını ve sonunu dosyaya dokunmadan kırpmak için aynı klasöre `i
 
 ## Kaldırma
 
-Windows Ayarlar > Uygulamalar > Yüklü uygulamalar listesinde **Definitely Not PS5 Menu** satırını bulup Kaldır'a bas. Oyun listen ve ayarların `%APPDATA%\Definitely Not PS5 Menu` klasöründe kalır, yeniden kurarsan her şey olduğu gibi geri gelir. Hiç iz kalmasın istiyorsan o klasörü de sil.
+Windows Ayarlar > Uygulamalar > Yüklü uygulamalar listesinde **Definitely Not a Console** satırını bulup Kaldır'a bas. Kaldırmadan önce Ayarlar'da **Kumanda bağlanınca menüyü aç** ve **Windows ile Başlat** satırlarını kapatırsan başlangıç kayıtları da silinir. Oyun listen ve ayarların `%APPDATA%\Definitely Not a Console` klasöründe kalır, yeniden kurarsan her şey olduğu gibi geri gelir. Hiç iz kalmasın istiyorsan o klasörü de sil. 1.5.0'dan önceki sürümün klasörü (`%APPDATA%\Definitely Not PS5 Menu`) taşımadan sonra yerinde bırakılır; bir sonraki sürüm onu, ne sileceğini önce listeleyerek temizler.
 
 ## SSS
 
 **Oyunlarım nerede saklanıyor?**
-Liste, ayarlar ve seçtiğin görseller `%APPDATA%\Definitely Not PS5 Menu` klasöründe durur. Eski "PS5 Menu" sürümünü kullandıysan oyunların ilk açılışta oraya kendiliğinden taşınır.
+Liste, ayarlar ve seçtiğin görseller `%APPDATA%\Definitely Not a Console` klasöründe durur. Definitely Not PS5 Menu (1.4 ve öncesi) ya da daha eski "PS5 Menu" sürümünü kullandıysan oyunların ilk açılışta oraya kendiliğinden kopyalanır.
 
 **Windows açılınca kendiliğinden başlasın istiyorum.**
 Ayarlar'daki **Windows ile Başlat** satırını aç.
@@ -169,9 +208,12 @@ Görsel satırından kare bir kapak (en az 512x512) ve 16:9 bir arka plan seçeb
 **Kumandam çalışmıyor.**
 Menü, Windows'un Xbox kumandası desteğini kullanır. Kumanda başka bir oyunda çalışıyorsa menüde de çalışır; Steam açıksa Steam Input'un kumandayı yakalamadığından emin ol.
 
+**Pil göstergesi neden yüzde göstermiyor?**
+Windows'un Xbox kumandası arayüzü (XInput) pili yalnızca dört seviyede bildirir: boş, az, orta, dolu. Menü en düşük seviyede uyarır; bu yaklaşık son %10'a denk gelir ama kesin bir yüzde değildir. Kablolu kumandada gösterge çıkmaz.
+
 ## Geliştirme
 
-Uygulama Electron ile yazıldı. Oyun pencerelerini izleyen küçük yardımcı program `native/ps5winhelper.c` içinde, mingw ile derlenir. Testler `node test/unit.test.js`, `node test/winwatch.test.js`, `node test/homeflow.test.js` `node test/loadprogress.test.js` ve `node test/x360.test.js` ile çalışır; intro akışı `tools/x360/boot_e2e.sh synth|logo|video` ile Xvfb altında uçtan uca denenir; yardımcının basılı tutma mantığı `gcc native/hold_test.c` ile ayrıca denenir, geçişlerde ekrana başka bir pencere sızmadığı Linux üzerinde gerçek pencerelerle kaydedilip kare kare `tools/frame_test.sh` ile denetlenir (`tools/frame_test.sh <klasör> progress` yükleme ilerlemesini dener) (Xvfb, ffmpeg, ffplay, xdotool gerekir), kurulum dosyaları `node tools/build.js` ile `dist/` klasörüne çıkar. `tools/e2e_all.sh` bütün testleri Xvfb altında sırayla çalıştırır (bozuk dosyalar, Türkçe karakterli yollar, çok oyun, intro sırasında Alt+F4 dahil); `tools/navparity.sh` PS5 gezinmesini 1.3 ile adım adım, `tools/ps5_parity.sh` PS5 ekranlarını piksel piksel karşılaştırır, `tools/dpi_check.sh` farklı çözünürlük ve ölçeklerde ekranları dener; uzun denemeler `tools/e2e_all.sh qa-soak` (500 geçiş) ve `QA_SEED=1 tools/e2e_all.sh qa-fuzz` (rastgele girdi).
+Uygulama Electron ile yazıldı. Oyun pencerelerini izleyen küçük yardımcı program `native/ps5winhelper.c`, kumanda izleyicisi `native/padwatch.c` içinde, mingw ile derlenir (`x86_64-w64-mingw32-gcc -O2 -s -mwindows -municode -o app/bin/dnac-padwatch.exe native/padwatch.c -luser32 -lshell32`). Güncelleme takibi sahte bir GitHub sunucusuyla (`test/fake-github.js`) `node test/ports.test.js` ve `tools/e2e_all.sh qa-updates` ile denenir. Testler `node test/unit.test.js`, `node test/winwatch.test.js`, `node test/homeflow.test.js` `node test/loadprogress.test.js` ve `node test/x360.test.js` ile çalışır; intro akışı `tools/x360/boot_e2e.sh synth|logo|video` ile Xvfb altında uçtan uca denenir; yardımcının basılı tutma mantığı `gcc native/hold_test.c` ile ayrıca denenir, geçişlerde ekrana başka bir pencere sızmadığı Linux üzerinde gerçek pencerelerle kaydedilip kare kare `tools/frame_test.sh` ile denetlenir (`tools/frame_test.sh <klasör> progress` yükleme ilerlemesini dener) (Xvfb, ffmpeg, ffplay, xdotool gerekir), kurulum dosyaları `node tools/build.js` ile `dist/` klasörüne çıkar. `tools/e2e_all.sh` bütün testleri Xvfb altında sırayla çalıştırır (bozuk dosyalar, Türkçe karakterli yollar, çok oyun, intro sırasında Alt+F4 dahil); `tools/navparity.sh` PS5 gezinmesini 1.3 ile adım adım, `tools/ps5_parity.sh` PS5 ekranlarını piksel piksel karşılaştırır, `tools/dpi_check.sh` farklı çözünürlük ve ölçeklerde ekranları dener; uzun denemeler `tools/e2e_all.sh qa-soak` (500 geçiş) ve `QA_SEED=1 tools/e2e_all.sh qa-fuzz` (rastgele girdi).
 
 ```
 cd app && npm install && npx electron . --windowed
@@ -185,10 +227,10 @@ Bu proje resmi değildir; Sony Interactive Entertainment ya da Microsoft ile ba�
 
 ## English
 
-*Definitely not a PS5 menu. It just looks a bit like one.*
+*Definitely not a console. It just looks a bit like one.* (Called Definitely Not PS5 Menu up to 1.4; your games and settings move over on the first start of 1.5.0.)
 
-A game launcher for Windows that looks like the PS5 home screen. You add games, emulators or shortcuts from inside the app (the **+** tile, or Settings > Oyunları Yönet), pick a cover image or point it at a PS4 dump's `sce_sys` folder, and launch everything with a keyboard or an Xbox controller. While a game runs the menu window is closed completely and comes back when the game exits. Hold Esc or the Xbox button for about a second during a game to pause it and open the menu, then pick Devam Et to continue where you left off; starting another game closes the open one first, like on a console. If Lossless Scaling is installed through Steam, any game can start with it and scale automatically. Games that prepare shaders for a long time before their first picture (such as the Shadow of the Colossus PC port) show their progress on the launch screen. A second menu styled after the 2010-2013 Xbox 360 dashboard is one stick click away (L3 / R3 on the pad, PageUp / PageDown on the keyboard); up/down navigate inside each menu as before. Each menu plays a short boot intro the first time it comes up in a session (Settings > Konsol Açılış İntrosu: once / off); put your own `ps5-boot.mp4` / `x360-boot.mp4`, `*-boot.wav/.mp3/.ogg` or `ps5-logo.png` / `x360-logo.png` into `%APPDATA%\Definitely Not PS5 Menu\intro\` to replace the video, the sound or the logo, and trim a video with `intro.json` (`{"x360": {"start": 0.1, "end": 7.6}}`).
+A game launcher for Windows that looks like the PS5 home screen. You add games, emulators or shortcuts from inside the app (the **+** tile, or Settings > Oyunları Yönet), pick a cover image or point it at a PS4 dump's `sce_sys` folder, and launch everything with a keyboard or an Xbox controller. While a game runs the menu window is closed completely and comes back when the game exits. Hold Esc or the Xbox button for about a second during a game to pause it and open the menu, then pick Devam Et to continue where you left off; starting another game closes the open one first, like on a console. If Lossless Scaling is installed through Steam, any game can start with it and scale automatically. Games that prepare shaders for a long time before their first picture (such as the Shadow of the Colossus PC port) show their progress on the launch screen. A second menu styled after the 2010-2013 Xbox 360 dashboard is one stick click away (L3 / R3 on the pad, PageUp / PageDown on the keyboard); up/down navigate inside each menu as before. Each menu plays a short boot intro the first time it comes up in a session (Settings > Konsol Açılış İntrosu: once / off); put your own `ps5-boot.mp4` / `x360-boot.mp4`, `*-boot.wav/.mp3/.ogg` or `ps5-logo.png` / `x360-logo.png` into `%APPDATA%\Definitely Not a Console\intro\` to replace the video, the sound or the logo, and trim a video with `intro.json` (`{"x360": {"start": 0.1, "end": 7.6}}`). Since 1.5.0 the focused game plays its own music (PS4 dumps: `sce_sys\snd0.at9`, converted once with your own ffmpeg; other games: a file you pick or one in the game folder) and its picture becomes the background; a small helper opens the menu when a controller connects (Settings > Kumanda bağlanınca menüyü aç; mind Steam's Big Picture button setting); there are play statistics, a wireless controller battery indicator and an updater for PC ports from GitHub releases (full backup, one-step roll back, new releases wait 3 days and are held when crash reports come in; notify only by default).
 
-Download `Definitely.Not.PS5.Menu.Setup.1.4.2.exe` from the [Releases](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases/latest) page and run it. It installs per user, needs no admin rights and adds Start Menu and desktop shortcuts. The app is not code signed, so SmartScreen may warn you the first time: click **More info**, then **Run anyway**. A portable zip is available as well. To uninstall, use Windows Settings > Apps. The interface is in Turkish by default; switch it under Ayarlar > Dil / Language.
+Download `Definitely.Not.a.Console.Setup.1.5.0.exe` from the [Releases](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases/latest) page and run it. It installs per user, needs no admin rights and adds Start Menu and desktop shortcuts. The app is not code signed, so SmartScreen may warn you the first time: click **More info**, then **Run anyway**. A portable zip is available as well. To uninstall, use Windows Settings > Apps. The interface is in Turkish by default; switch it under Ayarlar > Dil / Language.
 
 This is an unofficial fan project and is not affiliated with, endorsed or sponsored by Sony Interactive Entertainment or Microsoft. PlayStation and PS5 are trademarks of Sony Interactive Entertainment Inc.; Xbox and Xbox 360 are trademarks of Microsoft Corporation. No Sony or Microsoft code, fonts, sounds, videos, logos or artwork are included (the boot intros are drawn and synthesized by the app; files you put in the intro folder stay yours); game covers in the screenshots belong to their owners and are not part of the repository or the installer. MIT License, Copyright (c) 2026 Kutay Kılıç.

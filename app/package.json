@@ -78,7 +78,8 @@
       "artifactName": "Definitely Not a Console Setup ${version}.${ext}",
       "installerIcon": "assets/icons/app.ico",
       "uninstallerIcon": "assets/icons/app.ico",
-      "runAfterFinish": true
+      "runAfterFinish": true,
+      "include": "build/installer.nsh"
     }
   },
   "repository": {
