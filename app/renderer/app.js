@@ -821,7 +821,7 @@
     for (const k of Object.keys(mappers)) if (![...pads].some((p) => p && p.connected && String(p.index) === k)) delete mappers[k];
     for (const p of pads) {
       if (!p || !p.connected) continue;
-      const m = mappers[p.index] || (mappers[p.index] = new INPUT.PadMapper());
+      const m = mappers[p.index] || (mappers[p.index] = new INPUT.PadMapper({ prime: true }));
       const acts = m.update(p.buttons, p.axes, now);
       if (acts.length) { setMode('pad'); document.body.classList.add('nocursor'); }
       for (const a of acts) dispatch(a);

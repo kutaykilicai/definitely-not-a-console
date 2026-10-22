@@ -101,6 +101,7 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
 
       // Pad: a fake controller in the page (navigator.getGamepads) drives the real PadMapper.
       await js(`(() => { const p = { index: 0, connected: true, buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })), axes: [0, 0, 0, 0] }; window.__pad = p; navigator.getGamepads = () => [p]; window.__keys = []; window.__padlog = []; window.addEventListener('keydown', (e) => window.__keys.push(e.key), true); })()`);
+      await sleep(150);   // let the menu see the pad once (a pad is primed on first sight)
       const pad = (code) => js(`(() => { const p = window.__pad; ${code} })()`);
       const btn = (i, on) => pad(`p.buttons[${i}] = { pressed: ${on}, value: ${on ? 1 : 0} };`);
       n0 = (await state()).n;
@@ -125,6 +126,11 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
       n0 = (await state()).n;
       await btn(11, true); await sleep(60); await pad('p.connected = false;'); await sleep(200); await btn(11, false); await pad('p.connected = true;'); await sleep(400); s = await state();
       check('pad unplugged mid-press: no ghost switch on reconnect', s.n === n0, `switches ${s.n - n0}`);
+      // A pad that shows up with R3 already down (plugged in mid-press, or the menu reopening while
+      // it is held): the release does not switch
+      await pad('p.connected = false;'); await sleep(150); n0 = (await state()).n;
+      await btn(11, true); await pad('p.connected = true;'); await sleep(150); await btn(11, false); await sleep(400); s = await state();
+      check('pad first seen with R3 held: release does not switch', s.n === n0, `switches ${s.n - n0}`);
       await js('delete navigator.getGamepads');
 
       // Launch Naruto from the X360 menu: back/home returns focus to the default tile (Naruto)

@@ -116,3 +116,12 @@ ok('keyboard: PageUp/PageDown switch, no X/Y letter keys, nothing else changed',
 });
 
 console.log(`${n} x360 tests passed`);
+ok('pad prime: buttons / stick held when the pad is first seen do nothing until released', () => {
+  const m = new INPUT.PadMapper({ prime: true }); const P = (b, ax, t) => m.update(Array.from({ length: 17 }, (_, i) => ({ pressed: b.includes(i) })), ax || [0, 0, 0, 0], t);
+  assert.deepEqual(P([0, 16, 10], [0, 0.9, 0, 0], 0), [], 'A, Guide, L3 and stick down held at first sight');
+  assert.deepEqual(P([0, 16, 10], [0, 0.9, 0, 0], 500), [], 'still held: no repeat');
+  assert.deepEqual(P([], [0, 0, 0, 0], 600), [], 'release: no L3 switch, no select');
+  assert.deepEqual(P([0], [0, 0.9, 0, 0], 700), ['down', 'select'], 'a fresh press works');
+  const v = new INPUT.PadMapper({ prime: true }); const V = (b, t) => v.update(Array.from({ length: 17 }, (_, i) => ({ pressed: b.includes(i) })), [0, 0, 0, 0], t);
+  assert.deepEqual(V([9], 0), []); assert.deepEqual(V([], 16), [], 'Menu held at first sight: no options on release');
+});

@@ -13,6 +13,10 @@
       // stick stayed near the centre while it was down and the press was short: a click that happens
       // while steering with the stick, or a long hold, is not a request to change menus.
       this.click = {}; this.clickMax = opts.clickMax ?? 700; this.clickTravel = opts.clickTravel ?? 0.5;
+      // prime: buttons and directions already held the first time a pad is seen (menu reopening after
+      // a game while A, the Xbox button or a stick is still down, a pad plugged in mid-press) count
+      // only after they are let go, so they do not start a game again or close the pause menu.
+      this.prime = !!opts.prime;
     }
     // buttons: array of booleans/pressed objects; axes: array; returns actions list.
     update(buttons, axes, now) {
@@ -29,6 +33,13 @@
         up: pressed(B.UP) || sy < 0, down: pressed(B.DOWN) || sy > 0,
         left: pressed(B.LEFT) || sx < 0, right: pressed(B.RIGHT) || sx > 0,
       };
+      if (this.prime) {
+        this.prime = false;
+        for (let i = 0; i < 17; i++) this.prev[i] = pressed(i);
+        for (const d of DIRS) if (dirHeld[d]) this.dirState[d] = { next: Infinity };
+        if (pressed(B.VIEW) || pressed(B.MENU)) this.comboUsed = true;
+        return out;
+      }
       for (const d of DIRS) {
         const st = this.dirState[d];
         if (dirHeld[d]) {
