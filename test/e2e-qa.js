@@ -321,6 +321,83 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
           check(`${c}: lists closed`, (await st()).ov === 0, JSON.stringify(await st()));
         }
       }
+      if (MODE === 'theme') {
+        const mu = () => js('window.__ps5.music');
+        const ev = () => js('window.__ps5.musicEvents.map((e) => e[1] + ":" + (e[2] || "")).join(",")');
+        const goTo = async (id, gap = 260) => {
+          const items = await js('window.__ps5.items.map((x) => x.id)'); const want = items.indexOf(id);
+          let row = await js('window.__ps5.nav.row');
+          while (row !== want) { await press(row < want ? 'right' : 'left'); await sleep(gap); row = await js('window.__ps5.nav.row'); }
+        };
+        await settle(); await sleep(300);
+        check('setup: PS5 menu, game music is on', (await st()).c === 'ps5');
+        // quick browsing over every game: nothing starts while the focus keeps moving
+        await js('window.__ps5.musicEvents.length = 0');
+        const items = await js('window.__ps5.items.map((x) => x.id)');
+        for (let i = 0; i < items.length - 1; i++) { await press('right'); await sleep(140); }
+        for (let i = 0; i < items.length - 1; i++) { await press('left'); await sleep(140); }
+        let e = await ev();
+        check('fast browsing: no music starts on the way', !/start/.test(e), e);
+        await goTo('muz-a', 140);
+        const t0 = Date.now(); await waitFor(async () => (await mu()).id === 'muz-a', 3000, 40);
+        info.startAfterMs = Date.now() - t0;
+        check('music of the focused game starts after a short pause', info.startAfterMs >= 450 && info.startAfterMs < 1600, info.startAfterMs);
+        await sleep(250); const l1 = (await mu()).level; await sleep(1500); const l2 = (await mu()).level;
+        info.fade = [l1, l2];
+        check('it fades in (quiet first, then the set volume 0.5)', l1 < l2 && l2 > 0.4 && l2 <= 0.51, `${l1.toFixed(2)} -> ${l2.toFixed(2)}`);
+        const m1 = await mu(); check('the music is playing (time moves)', m1.playing && m1.t > 0.5, JSON.stringify(m1));
+        await press('up'); await sleep(60); const ld = (await mu()).level; await sleep(700); const lu = (await mu()).level;
+        check('a menu sound ducks it for a moment', ld < 0.3 && lu > 0.4, `${ld.toFixed(2)} -> ${lu.toFixed(2)}`);
+        await press('down'); await sleep(300);
+        // to the silent game: the music fades out and stops
+        await goTo('muz-c'); await sleep(900);
+        const mc = await mu(); check('a game without music: quiet', !mc.playing && mc.id === null, JSON.stringify(mc));
+        // B: snd0.at9 from the PS4 dump, turned into Ogg in the background (fake ffmpeg), then it plays
+        await waitFor(async () => (await js('(window.__ps5.items.find((x) => x.id === "muz-b").g.theme || {}).musicSource')) === 'sce', 8000, 100);
+        const ffl = (() => { try { return fs.readFileSync(process.env.FAKE_FFMPEG_LOG, 'utf8'); } catch { return ''; } })();
+        check('snd0.at9 converted once with ffmpeg (opus)', ffl.trim().split('\n').length === 1 && /snd0\.at9/.test(ffl) && /libopus/.test(ffl), ffl.trim().slice(0, 200));
+        await goTo('muz-b'); await waitFor(async () => (await mu()).id === 'muz-b', 3000, 50); await sleep(400);
+        const mb = await mu(); check('the PS4 theme music plays for that game', mb.id === 'muz-b' && mb.playing, JSON.stringify(mb));
+        const tint = await js('(() => { const e = document.querySelector("#scrim .s-tint"); return { on: e.classList.contains("on"), c: e.style.getPropertyValue("--gacc") }; })()');
+        check('B has only an icon: its colour tints the screen (red picture -> reddish accent)', tint.on && /^#/.test(tint.c) && parseInt(tint.c.slice(1, 3), 16) > parseInt(tint.c.slice(5, 7), 16), JSON.stringify(tint));
+        await goTo('muz-a'); await waitFor(async () => (await mu()).id === 'muz-a', 3000, 50); await sleep(1500);
+        const tintA = await js('document.querySelector("#scrim .s-tint").classList.contains("on")');
+        check('A has its own picture: no tint, looks as before', !tintA);
+        const posA = (await mu()).t;
+        // launch: the music stops, its place is kept, after the game it goes on from there
+        await press('select');
+        await waitFor(async () => !!runner.running, 5000, 50); await sleep(500);
+        const ml = await mu(); check('game started: the music is quiet', ml.level < 0.05, JSON.stringify(ml));
+        const saved = readJson(FILES.state, {}).musicPos || {};
+        check('its position is saved for later', saved['muz-a'] && saved['muz-a'].t >= posA - 0.5, JSON.stringify(saved['muz-a']));
+        await waitFor(async () => !runner.running && win && !win.isDestroyed() && win.isVisible(), 20000, 200);
+        await sleep(400);
+        const w2 = BrowserWindow.getAllWindows().find((x) => !x.isCover && !x.isDestroyed()); if (w2 && w2 !== win) { /* the menu window is made again */ }
+        await settle(); await sleep(2600);
+        const back = await js('window.__ps5.music').catch(() => null);
+        check('after the game: the same music continues from where it was', back && back.id === 'muz-a' && back.playing && back.t >= (saved['muz-a'] ? saved['muz-a'].t : 0), JSON.stringify(back));
+        // setting off: nothing plays
+        const toggleRow = async (re) => {
+          await js('window.__ps5.openList("settings")'); await sleep(300);
+          const rows = await js('[...document.querySelectorAll("#overlay .full .panel .it")].map((e) => e.textContent)');
+          const k = rows.findIndex((r) => re.test(r)); for (let i = 0; i < k; i++) { await press('down'); await sleep(30); }
+          await press('select'); await sleep(300); const v = await js('document.querySelector("#overlay .full .panel .it.focus .val").textContent');
+          await press('back'); await sleep(300); return v;
+        };
+        info.musicRow = await toggleRow(/^Oyun müziği/);
+        await press('right'); await press('left'); await sleep(1500);
+        const off = await mu(); info.offState = off;
+        check('Ayarlar > Oyun müziği off: quiet', !off.playing || off.level < 0.02, JSON.stringify(off));
+        info.musicRow2 = await toggleRow(/^Oyun müziği/);
+        // Xbox 360: the game's picture becomes the dashboard theme and its music plays
+        await press('consoleNext'); await settle(); await sleep(500);
+        await focusX('muz-x'); await js('window.__ps5.xdash.layout(false)'); await sleep(1800);
+        const xt = await js('(() => { const b = document.querySelector("#x360 .x-theme"); const on = b.querySelector(".xt.on"); return { box: b.classList.contains("on"), img: on ? on.style.backgroundImage : "", acc: on ? on.style.getPropertyValue("--xacc") : "" }; })()');
+        check('X360: the focused game\'s cover becomes the theme background', xt.box && /cover\.png/.test(xt.img) && /^#/.test(xt.acc), JSON.stringify(xt));
+        info.x360Music = await mu();
+        if (process.env.QA_SHOT) fs.writeFileSync(`${process.env.QA_SHOT}/x360_theme.png`, (await win.webContents.capturePage()).toPNG());
+        check('X360: its music plays (after the setting came back on)', info.x360Music.id === 'muz-x', JSON.stringify(info.x360Music));
+      }
       if (MODE === 'soak') {
         const N = Number(process.env.QA_SOAK || 500);
         const dbg = win.webContents.debugger; dbg.attach('1.3');

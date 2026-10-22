@@ -52,6 +52,22 @@ if (mode === 'bootoff') { settings.bootIntro = 'off'; fs.copyFileSync(path.join(
 if (mode === 'fuzz') settings.bootIntro = 'once';
 if (mode === 'empty') doc.games = doc.games.filter((x) => x.console !== 'x360');
 if (mode === 'lists') for (let i = 0; i < 40; i++) doc.games.push(g(`list-${i}`, `Liste Oyunu ${i} İğüşçö`, i % 2 ? { console: 'x360' } : {}));
+if (mode === 'theme') {
+  // music and pictures made here (sine tones, plain colours); nothing from a real game
+  const { execFileSync } = require('child_process');
+  const tone = (f, hz, sec) => { fs.mkdirSync(path.dirname(f), { recursive: true }); execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `sine=frequency=${hz}:duration=${sec}`, '-c:a', 'libvorbis', '-f', 'ogg', f]); };
+  const png = (f, rgb) => { fs.mkdirSync(path.dirname(f), { recursive: true }); execFileSync('ffmpeg', ['-hide_banner', '-loglevel', 'error', '-y', '-f', 'lavfi', '-i', `color=c=0x${rgb}:s=320x180`, '-frames:v', '1', f]); };
+  const UG = path.join(dst, 'assets', 'user', 'games');
+  doc.games.push(g('muz-a', 'Müzikli Oyun A', {}), g('muz-b', 'PS4 Temalı B', { badge: 'PS4' }), g('muz-c', 'Sessiz Oyun C', {}), g('muz-x', 'Xbox Temalı', { console: 'x360' }));
+  tone(path.join(UG, 'muz-a', 'music.ogg'), 440, 30); tone(path.join(UG, 'muz-a', 'music-2.ogg'), 550, 30);
+  png(path.join(UG, 'muz-a', 'background.png'), '304050');
+  // B: a PS4 dump folder with snd0.at9 (fake bytes: the test's ffmpeg stand-in "converts" it) and an icon only
+  const sce = path.join(base, 'Dump B', 'CUSA99999', 'sce_sys'); fs.mkdirSync(sce, { recursive: true });
+  fs.writeFileSync(path.join(sce, 'snd0.at9'), Buffer.alloc(4096, 7)); png(path.join(sce, 'icon0.png'), 'c03020');
+  doc.games.find((x) => x.id === 'muz-b').sceSys = sce;
+  png(path.join(UG, 'muz-x', 'cover.png'), '2050c0'); tone(path.join(UG, 'muz-x', 'music.ogg'), 330, 30);
+  settings.themeVolume = 0.5;
+}
 if (mode === 'many') for (let i = 0; i < 300; i++) doc.games.push(g(`x360-${i}`, `Xbox Oyunu ${i} İğüşçö`, { console: 'x360', args: '1' }));
 if (mode === 'flow' || mode === 'close') settings.bootIntro = 'once';
 if (mode === 'single') doc.games = doc.games.find((x) => x.console === 'x360');   // one game, not a list

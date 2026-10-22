@@ -23,7 +23,7 @@ function makeId(title, taken) {
 }
 
 // Fields the manager is allowed to write; everything else on an entry is kept as it was.
-const EDITABLE = ['title', 'exe', 'args', 'workingDir', 'sceSys', 'losslessScaling', 'suspendInMenu', 'hidden', 'badge', 'description', 'section', 'console'];
+const EDITABLE = ['title', 'exe', 'args', 'workingDir', 'sceSys', 'losslessScaling', 'suspendInMenu', 'hidden', 'badge', 'description', 'section', 'console', 'music', 'musicShuffle', 'themeBg', 'accent'];
 // Which console menu a game is shown in. Entries without the field (all older ones) are PS5 games;
 // a badge like "X360" also counts (renderer/consoles.js has the same rule).
 const XBOX_BADGE = /^(x360|xbox ?360|xb360)$/i;
@@ -49,6 +49,11 @@ function saveEntry(doc, draft) {
   if (!g.losslessScaling) delete g.losslessScaling;
   if (g.suspendInMenu !== false) delete g.suspendInMenu;   // on by default; only "off" is stored
   if (!g.hidden) delete g.hidden;
+  // theme (1.5): only what differs from "automatic" is stored
+  if (g.music === 'auto' || g.music === '' || g.music == null || (Array.isArray(g.music) && !g.music.length)) delete g.music;
+  if (!g.musicShuffle) delete g.musicShuffle;
+  if (g.themeBg !== 'off') delete g.themeBg;
+  if (!(typeof g.accent === 'string' && /^#[0-9a-f]{6}$/i.test(g.accent))) delete g.accent;
   // Store the console only when it is not what the badge already says (keeps old files unchanged).
   if ('console' in g) {
     const want = consoleOf({ console: g.console }); delete g.console;

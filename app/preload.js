@@ -18,5 +18,5 @@ contextBridge.exposeInMainWorld('ps5', {
   power: (cmd) => ipcRenderer.invoke('power', cmd),
   capture: (file) => ipcRenderer.invoke('capture', file),
   captureDone: () => ipcRenderer.send('capture-done'),
-  on: (ch, fn) => { const ok = ['game-started', 'game-exited', 'game-error', 'game-handoff', 'game-returning', 'game-resumed', 'show-home', 'game-paused', 'confirm-quit', 'launch-progress']; if (ok.includes(ch)) ipcRenderer.on(ch, (_e, d) => fn(d)); },
+  on: (ch, fn) => { const ok = ['game-started', 'game-exited', 'game-error', 'game-handoff', 'game-returning', 'game-resumed', 'show-home', 'game-paused', 'confirm-quit', 'launch-progress', 'theme-update', 'pad-battery', 'updates-changed']; if (ok.includes(ch)) ipcRenderer.on(ch, (_e, d) => fn(d)); },
 });

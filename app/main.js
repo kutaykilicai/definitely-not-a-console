@@ -12,6 +12,7 @@ const { WinHelper, helperPath, hwndOf, pickMain, waitForGameWindow, coversMonito
 const lossless = require('./lib/lossless');
 const homeflow = require('./lib/homeflow');
 const loadprogress = require('./lib/loadprogress.js');
+const theme = require('./lib/theme');
 
 const isWin = process.platform === 'win32';
 const argv = process.argv.slice(1);
@@ -68,6 +69,11 @@ const DEFAULT_SETTINGS = {
   homeEscMs: 1000,
   homePad: true,             // same with the controller's Xbox button (or View+Menu together)
   homePadMs: 1000,
+  // 1.5: the focused game's own music and picture, like a console
+  themeMusic: true,
+  themeVolume: 0.5,
+  theme: true,
+  ffmpegPath: '',            // empty: <data>\tools\ffmpeg.exe or ffmpeg on PATH
 };
 
 const readJson = (f, d) => { try { return JSON.parse(fs.readFileSync(f, 'utf8').replace(/^\uFEFF/, '')); } catch { return d; } };
@@ -171,11 +177,43 @@ function listIntroFiles() {
 // window is made again after a game and that must not count as a new start.
 const bootShown = { ps5: false, x360: false };
 
+// ---------- theme: the game's music and picture (lib/theme.js) ----------
+const THEME_CACHE = path.join(DATA, 'cache', 'theme');
+const ffmpegExe = () => theme.findFfmpeg({ setting: settings.ffmpegPath, dataDir: DATA });
+const converter = new theme.Converter({ ffmpeg: ffmpegExe, busy: () => runner.running, log: (...a) => log(...a) });
+const accentCache = new Map();
+function accentOf(file) {
+  if (!file) return null;
+  let key = file; try { key += '|' + fs.statSync(file).mtimeMs; } catch { return null; }
+  if (accentCache.has(key)) return accentCache.get(key);
+  let c = null;
+  try {
+    const { nativeImage } = require('electron');
+    const img = nativeImage.createFromPath(file);
+    if (!img.isEmpty()) { const sm = img.resize({ width: 32, quality: 'good' }); c = theme.accentFromPixels(sm.toBitmap(), { bgra: true }); }
+  } catch { c = null; }
+  accentCache.set(key, c);
+  return c;
+}
+function themeOf(g, art) {
+  const m = theme.resolveMusic(g, art, { userGamesDir: path.join(USER_ASSETS, 'games'), cacheDir: THEME_CACHE });
+  if (m.source === 'sce-pending') {
+    const queued = converter.add({ id: g.id, at9: m.at9, cache: m.cache }, (ok) => { if (ok) send('theme-update', { id: g.id, music: [fileUrl(m.cache)], source: 'sce' }); });
+    if (!queued && !ffmpegExe()) m.source = 'sce-noffmpeg';
+  }
+  const pic = art.background || art.cover || art.icon || null;
+  return {
+    music: m.files.map(fileUrl), musicSource: m.source, musicFiles: m.files, shuffle: !!g.musicShuffle,
+    accent: g.accent || accentOf(pic), accentAuto: !g.accent,
+  };
+}
+
 async function buildInit() {
   const doc = await loadGames();
   const all = [];
   for (const [i, g] of doc.games.entries()) {
     const art = resolveArt(g, path.join(USER_ASSETS, 'games'), settings.dumpRoots || []);
+    if (g.themeBg === 'off') art.background = null;
     all.push({
       ...g, order: i,
       art: { icon: fileUrl(art.icon), background: fileUrl(art.background), logo: fileUrl(art.logo), cover: fileUrl(art.cover), exeIcon: art.icon ? null : await exeIcon(g.exe) },
@@ -183,6 +221,7 @@ async function buildInit() {
       installed: !!(g.exe && (fs.existsSync(g.exe) || process.env.PS5MENU_DEMO)),
       lastPlayed: state.lastPlayed[g.id] || 0,
       playSeconds: state.playSeconds[g.id] || 0,
+      theme: themeOf(g, art),
     });
   }
   // x360Scene: a fixed Xbox 360 dashboard scene used only by the reference comparison (tools/x360).
@@ -198,6 +237,7 @@ async function buildInit() {
     paused: !!(session && (phase === 'paused' || phase === 'pausing' || phase === 'overlay')),
     suspended: !!(session && session.suspended),
     version: app.getVersion(),
+    ffmpeg: !!ffmpegExe(),
     lossless: { installed: !!((isWin || FAKE) && lsOps.findExe(settings.losslessScalingExe)) || !!process.env.PS5MENU_FAKE_LS },
     migration,
   };
@@ -868,9 +908,10 @@ ipcMain.handle('pick', async (_e, kind, current) => {
   const filters = {
     exe: [{ name: 'Program ya da kısayol', extensions: ['exe', 'lnk', 'bat', 'cmd'] }, { name: 'Tüm dosyalar', extensions: ['*'] }],
     image: [{ name: 'Resim', extensions: ['png', 'jpg', 'jpeg', 'webp'] }],
+    audio: [{ name: 'Müzik', extensions: ['mp3', 'ogg', 'm4a', 'opus', 'wav', 'flac', 'aac', 'webm'] }],
   }[kind];
-  const props = kind === 'folder' || kind === 'scesys' ? ['openDirectory'] : ['openFile'];
-  const titles = { exe: 'Oyunu ya da kısayolunu seç', folder: 'Çalışma klasörünü seç', image: 'Resim seç', scesys: 'PS4 dökümündeki sce_sys klasörünü seç' };
+  const props = kind === 'folder' || kind === 'scesys' ? ['openDirectory'] : kind === 'audio' ? ['openFile', 'multiSelections'] : ['openFile'];
+  const titles = { exe: 'Oyunu ya da kısayolunu seç', folder: 'Çalışma klasörünü seç', image: 'Resim seç', scesys: 'PS4 dökümündeki sce_sys klasörünü seç', audio: 'Oyunun müziğini seç (birden fazla seçilebilir)' };
   pinTop(false);
   const r = await dialog.showOpenDialog(win, { title: titles[kind], properties: props, filters, defaultPath: current && fs.existsSync(current) ? current : undefined });
   if (phase === 'home' && win && win.isFocused()) pinTop(true);
@@ -882,6 +923,7 @@ ipcMain.handle('pick', async (_e, kind, current) => {
       return { exe: f, args: '', workingDir: '', name: path.basename(f).replace(/\.(exe|bat|cmd)$/i, ''), badge: emuBadge(f) };
     }
     if (kind === 'scesys') return readSceSys(f);
+    if (kind === 'audio') return { paths: r.filePaths.slice() };
     return { path: f };
   } catch (e) { return { error: e.message }; }
 });
@@ -893,6 +935,7 @@ ipcMain.handle('game-save', async (_e, draft) => {
     if (draft.clearArt) library.clearArt(USER_ASSETS, g.id);
     if (draft.iconFile) library.storeArt(USER_ASSETS, g.id, 'icon', draft.iconFile);
     if (draft.backgroundFile) library.storeArt(USER_ASSETS, g.id, 'background', draft.backgroundFile);
+    if (draft.themeBg === 'off' || draft.themeBg === 'auto' && draft.clearBg) { /* the picture stays on disk; themeBg off hides it */ }
   } catch (e) { saveGames(doc); return { ok: false, error: e.message, id: g.id, init: await buildInit() }; }
   saveGames(doc);
   const ls = g.losslessScaling ? await ensureLsProfile(g) : null;

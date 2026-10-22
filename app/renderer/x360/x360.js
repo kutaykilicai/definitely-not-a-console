@@ -79,7 +79,7 @@
       this.o = opts;               // { el, t, api, sound, glyphMode(), action(kind, payload), lang() }
       this.el = opts.el;
       this.panels = []; this.nav = NAVX.initial(1); this.forcedScene = null;
-      this.el.innerHTML = '<div class="x-bg"></div><div class="x-track"></div><div class="x-tabs"></div><div class="x-user"><span class="gt"></span><span class="pic"></span></div><div class="x-hints"></div>';
+      this.el.innerHTML = '<div class="x-bg"></div><div class="x-theme"><div class="xt"></div><div class="xt"></div></div><div class="x-track"></div><div class="x-tabs"></div><div class="x-user"><span class="gt"></span><span class="pic"></span></div><div class="x-hints"></div>';
       this.track = this.el.querySelector('.x-track'); this.tabsEl = this.el.querySelector('.x-tabs');
     }
     t(k) { return this.o.t(k); }
@@ -277,6 +277,37 @@
         this.track.querySelectorAll('.x-panel, .x-tile').forEach((e) => { e.style.transition = ''; });
       }
       this.hints();
+      if (this.o.onFocus) this.o.onFocus();
+      this.applyTheme(instant);
+    }
+
+    // A game's own picture as the dashboard background (like a dashboard theme), tinted with its
+    // colour. Follows the focus after a short pause; other tiles keep the last game's theme.
+    applyTheme(instant) {
+      clearTimeout(this.themeT);
+      const on = this.o.theme && this.o.theme() && !this.forcedScene;
+      const c = this.current(); const g = c && c.tile && c.tile.kind === 'game' ? c.tile.game : null;
+      if (!on) { this.setTheme(null, true); return; }
+      if (!g) return;
+      const art = g.art || {}; const pic = art.background || art.cover || null;
+      const acc = (g.theme && g.theme.accent) || null;
+      if (!pic && !acc) return;
+      this.themeT = setTimeout(() => this.setTheme({ id: g.id, pic, acc }), instant ? 0 : 700);
+    }
+    setTheme(th, instant) {
+      const key = th ? `${th.id}|${th.pic}|${th.acc}` : null;
+      if (key === this.themeKey) return; this.themeKey = key;
+      const box = this.el.querySelector('.x-theme'); if (!box) return;
+      const [a, b] = box.querySelectorAll('.xt');
+      const front = a.classList.contains('on') ? a : b, back = front === a ? b : a;
+      front.classList.remove('on');
+      if (!th) { box.classList.remove('on'); return; }
+      back.style.backgroundImage = th.pic ? cssUrl(th.pic) : 'none';
+      back.style.setProperty('--xacc', th.acc || '#5a9c2e');
+      if (instant) { back.style.transition = 'none'; void back.offsetWidth; }
+      back.classList.add('on'); box.classList.add('on');
+      if (instant) { void back.offsetWidth; back.style.transition = ''; }
+      this.themeId = th.id;
     }
 
     goPanel(i) { if (i === this.nav.panel || !this.panels[i]) return; this.nav = { ...this.nav, panel: i }; this.o.sound.play('focus'); this.layout(false); }

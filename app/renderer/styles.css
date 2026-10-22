@@ -27,6 +27,9 @@ body.nocursor, body.nocursor * { cursor: none !important; }
 #scrim .s-left { background: linear-gradient(to right, rgba(0,0,0,0.5) 0px, rgba(0,0,0,0.34) 520px, rgba(0,0,0,0.1) 980px, rgba(0,0,0,0) 1250px); }
 #scrim .s-bottom { background: linear-gradient(to top, rgba(0,0,0,0.96) 0px, rgba(0,0,0,0.82) 100px, rgba(0,0,0,0.45) 260px, rgba(0,0,0,0.12) 440px, rgba(0,0,0,0) 560px); }
 #stage.noscrim #scrim { display: none; }
+/* theme colour for a game without a picture of its own (1.5); nothing is drawn while off */
+#scrim .s-tint { opacity: 0; transition: opacity 700ms var(--ease-out); background: radial-gradient(ellipse 70% 80% at 78% 30%, color-mix(in srgb, var(--gacc, #000) 55%, transparent), transparent 70%), linear-gradient(to top, color-mix(in srgb, var(--gacc, #000) 22%, transparent), transparent 60%); mix-blend-mode: soft-light; }
+#scrim .s-tint.on { opacity: 1; }
 #stage.scrolled #scrim { background-color: rgba(0,0,0,0.55); }
 
 /* Page (scrolls up when the hub cards are focused) */

@@ -9,6 +9,8 @@
   const qs = new URLSearchParams(location.search);
   const forced = qs.get('state') ? JSON.parse(qs.get('state')) : {};
   const CAPTURE = qs.get('capture') === '1';
+  // screenshots stay as they were unless a test asks for the theme (forced.theme)
+  const CAPTURE_PLAIN = CAPTURE && !forced.theme;
   // Set when the menu window is made again after (or during) a game: no intro, straight to home.
   const REOPEN = qs.get('reopen');
 
@@ -35,6 +37,9 @@
   // Console boot intros (boot.js): once per app start for each console menu, never after a game.
   const markPath = (ICONS.boot.match(/ d="([^"]+)"/) || [])[1];
   const bootP = new BOOT.Player($('#boot'), { sound: SOUND, markPath });
+  // The focused game's own music (music.js); menu sounds duck it.
+  const MUSIC = new window.ThemeMusic({ sound: SOUND, delayMs: forced.musicDelay != null ? forced.musicDelay : 700 });
+  { const play = SOUND.play.bind(SOUND); SOUND.play = (n) => { play(n); if (n !== 'launch') MUSIC.duck(); }; }
   const cOf = (g) => CONS.consoleOf(g);
   // Treat the mouse as in use only after real movement (several events), not a single synthetic move.
   const mouseLive = () => moveTimes.length >= 3 && performance.now() - lastMouse < 400;
@@ -243,7 +248,24 @@
   const srcLabel = (s) => ({ shortcut: t('srcShortcut'), seed: t('srcSeed'), missing: t('srcMissing') }[s] || (s ? t('srcManual') : ''));
   const baseName = (p) => String(p || '').split(/[\\/]/).pop();
 
+  // ---------- theme: music and colour of the focused game ----------
+  const themeOn = () => data && data.settings.theme !== false && !CAPTURE_PLAIN;
+  function focusedGame() {
+    if (consoleId === 'x360') { const c = xdash && xdash.current(); return c && c.tile && c.tile.kind === 'game' ? c.tile.game : null; }
+    const it = cur(); return it && it.kind === 'game' ? it.g : null;
+  }
+  function themeFocus(now) {
+    const g = focusedGame();
+    MUSIC.focus(g ? g.id : null, g && g.theme ? g.theme.music : [], now);
+    // PS5: a game without a picture of its own shows its icon as the background; the theme colour
+    // tints it (games with their own picture look exactly as before).
+    const tint = $('#scrim .s-tint');
+    const own = g && g.art && g.art.background;
+    const acc = themeOn() && g && !own && g.theme && g.theme.accent;
+    if (tint) { if (acc) tint.style.setProperty('--gacc', acc); tint.classList.toggle('on', !!acc && consoleId === 'ps5'); }
+  }
   function onFocusChanged(instant) {
+    themeFocus(instant);
     layoutRow(instant);
     const ring = $('#ring'); const rt = $('#rowtitle');
     ring.classList.remove('on'); rt.classList.remove('on');
@@ -418,8 +440,10 @@
 
   function editOverlay(g, preset) {
     const ls = data.lossless && data.lossless.installed;
-    const d = g ? { id: g.id, title: g.title, exe: g.exe || '', args: g.args || '', workingDir: g.workingDir || '', sceSys: g.sceSys || '', losslessScaling: !!g.losslessScaling, suspendInMenu: g.suspendInMenu !== false, hidden: !!g.hidden, badge: g.badge || '', artPaths: g.artPaths }
-      : { title: '', exe: '', args: '', workingDir: '', sceSys: '', losslessScaling: false, suspendInMenu: true, badge: '' };
+    const d = g ? { id: g.id, title: g.title, exe: g.exe || '', args: g.args || '', workingDir: g.workingDir || '', sceSys: g.sceSys || '', losslessScaling: !!g.losslessScaling, suspendInMenu: g.suspendInMenu !== false, hidden: !!g.hidden, badge: g.badge || '', artPaths: g.artPaths,
+      music: g.music || 'auto', musicShuffle: !!g.musicShuffle, themeBg: g.themeBg || 'auto', accent: g.accent || 'auto' }
+      : { title: '', exe: '', args: '', workingDir: '', sceSys: '', losslessScaling: false, suspendInMenu: true, badge: '', music: 'auto', musicShuffle: false, themeBg: 'auto', accent: 'auto' };
+    const th = (g && g.theme) || {};
     d.console = g ? cOf(g) : CONS.normalize((preset && preset.console) || consoleId);
     const pickExe = async () => {
       const r = await api.pick('exe', d.exe); if (!r) return;
@@ -446,6 +470,22 @@
       { label: t('dirPick'), icon: ICONS.folder, run: async () => { const r = await api.pick('folder', d.workingDir || d.exe); if (r && r.path) { d.workingDir = r.path; o.render(); } } },
       { label: t('dirReset'), icon: ICONS.check, run: () => { d.workingDir = ''; o.render(); } },
     ] }));
+    const srcName = (x) => ({ picked: t('srcPicked'), user: t('srcUserMusic'), sce: t('srcSce'), 'sce-pending': t('srcScePending'), 'sce-noffmpeg': t('srcSceNoFf'), folder: t('srcFolder') }[x] || t('srcNone'));
+    const musicLabel = () => d.music === 'off' ? t('musicOffOpt') : Array.isArray(d.music) ? `${d.music.length === 1 ? baseName(d.music[0]) : d.music.length + ' ' + t('files')}${d.musicShuffle ? ' · ' + t('musicShuffle') : ''}` : `${t('musicAuto')} · ${srcName(th.musicSource)}`;
+    const musicMenu = () => pushOverlay(listOverlay({ style: { left: '560px', top: '420px' }, entries: [
+      { label: t('musicAuto'), icon: ICONS.check, run: () => { d.music = 'auto'; o.render(); if (th.musicSource === 'sce-noffmpeg') toast(t('ffmpegMissing'), t('ffmpegHint')); } },
+      { label: t('musicPick'), icon: ICONS.folder, run: async () => { const r = await api.pick('audio'); if (r && r.paths && r.paths.length) { d.music = r.paths; o.render(); } } },
+      { label: `${t('musicShuffle')}: ${d.musicShuffle ? t('on') : t('off')}`, icon: ICONS.pad, run: () => { d.musicShuffle = !d.musicShuffle; o.render(); } },
+      { label: t('musicOffOpt'), icon: ICONS.power, run: () => { d.music = 'off'; o.render(); } },
+    ] }));
+    const bgLabel = () => d.themeBg === 'off' ? t('bgOff') : d.backgroundFile ? baseName(d.backgroundFile) : t('bgAuto');
+    const bgMenu = () => pushOverlay(listOverlay({ style: { left: '560px', top: '440px' }, entries: [
+      { label: t('bgAuto'), icon: ICONS.check, run: () => { d.themeBg = 'auto'; delete d.backgroundFile; o.render(); } },
+      { label: t('bgPick'), icon: ICONS.image, run: async () => { const r = await api.pick('image'); if (r && r.path) { d.backgroundFile = r.path; d.themeBg = 'auto'; o.render(); } } },
+      { label: t('bgOff'), icon: ICONS.power, run: () => { d.themeBg = 'off'; delete d.backgroundFile; o.render(); } },
+    ] }));
+    const PALETTE = ['auto', '#e8503e', '#f2a63a', '#f2d23a', '#74ba3c', '#3fbfa8', '#4592e4', '#8a6ae8', '#e85aa8'];
+    const accentLabel = () => d.accent === 'auto' ? `${t('accentAuto')}${th.accent && th.accentAuto ? ' ' + th.accent : ''}` : d.accent;
     const save = async () => {
       if (!d.exe) { SOUND.play('error'); toast(t('fSave'), t('pickFirst')); return; }
       const { artPaths, ...draft } = d;
@@ -470,6 +510,9 @@
         ls ? { label: t('fLs'), icon: ICONS.desktop, value: d.losslessScaling ? t('on') : t('off'), stay: true, run: () => { d.losslessScaling = !d.losslessScaling; o.render(); } }
           : { label: t('lsMissing'), icon: ICONS.info, value: '', stay: true, run: () => toast(t('lsMissing'), t('lsMissingHint')) },
         { label: t('fSuspend'), icon: ICONS.pad, value: d.suspendInMenu ? t('on') : t('off'), stay: true, run: () => { d.suspendInMenu = !d.suspendInMenu; o.render(); if (!d.suspendInMenu) toast(t('fSuspend'), t('fSuspendOffHint')); } },
+        { label: t('fMusic'), icon: ICONS.music || ICONS.pad, value: musicLabel(), stay: true, run: musicMenu },
+        { label: t('fThemeBg'), icon: ICONS.image, value: bgLabel(), stay: true, run: bgMenu },
+        { label: t('fAccent'), icon: ICONS.image, value: accentLabel(), stay: true, run: () => { d.accent = PALETTE[(PALETTE.indexOf(d.accent) + 1) % PALETTE.length]; o.render(); } },
       ];
       if (d.hidden) list.push({ label: t('showHome'), icon: ICONS.check, value: t('off'), stay: true, run: () => { d.hidden = false; o.render(); } });
       list.push({ label: t('fSave'), icon: ICONS.check, stay: true, run: save });
@@ -551,6 +594,9 @@
       { label: 'Dil / Language', icon: ICONS.info, value: st.language === 'en' ? 'English' : 'Türkçe', stay: true, run: () => set('language', data.settings.language === 'en' ? 'tr' : 'en').then(() => { refresh(); const top = overlays[overlays.length - 1]; if (top) { top.el.querySelector('h1').textContent = t('settings'); hints([['A', t('select')], ['B', t('back')]]); } }) },
       { label: t('userFolder'), icon: ICONS.folder, stay: true, run: () => api.open('user-assets') },
       { label: t('sounds'), icon: ICONS.check, value: st.sounds ? t('on') : t('off'), stay: true, run: () => set('sounds', !data.settings.sounds) },
+      { label: t('themeMusic'), icon: ICONS.music || ICONS.check, value: st.themeMusic !== false ? t('on') : t('off'), stay: true, run: () => set('themeMusic', data.settings.themeMusic === false) },
+      { label: t('themeVolume'), icon: ICONS.music || ICONS.check, value: `%${Math.round((st.themeVolume ?? 0.5) * 100)}`, stay: true, run: () => { const v = [0.2, 0.35, 0.5, 0.7, 0.85, 1]; const i = v.findIndex((x) => x > (data.settings.themeVolume ?? 0.5) + 0.01); set('themeVolume', v[i < 0 ? 0 : i]); } },
+      { label: t('themeOn'), icon: ICONS.image, value: st.theme !== false ? t('on') : t('off'), stay: true, run: () => set('theme', data.settings.theme === false).then(() => { themeFocus(true); if (xdash) xdash.applyTheme(true); }) },
       { label: t('bootIntro'), icon: ICONS.info, value: st.bootIntro === 'off' ? t('bootOff') : t('bootOnce'), stay: true, run: () => set('bootIntro', data.settings.bootIntro === 'off' ? 'once' : 'off') },
       { label: t('introScreen'), icon: ICONS.info, value: introLabel(st.intro), stay: true, run: () => set('intro', intros[(intros.indexOf(data.settings.intro) + 1) % 3]) },
       { label: t('autostart'), icon: ICONS.power, value: st.autostart ? t('on') : t('off'), stay: true, run: () => set('autostart', !data.settings.autostart) },
@@ -652,6 +698,7 @@
     SOUND.play('launch');
     const bo = $('#blackout'); bo.classList.add('fast'); bo.classList.remove('off');
     launchScreen('art', g);
+    api.saveState({ musicPos: MUSIC.positions() });
     await new Promise((r) => setTimeout(r, 320));
     const res = await api.launch(g.id, opts.replace ? { replace: true } : {});
     launching = false;
@@ -697,6 +744,8 @@
       el: $('#x360'), t, api, sound: SOUND, glyphMode: () => inputMode, lang: () => (data.settings.language === 'en' ? 'en' : 'tr'),
       running: () => running,
       action: x360Action,
+      onFocus: () => themeFocus(false),
+      theme: () => themeOn(),
     });
     return xdash;
   }
@@ -899,6 +948,7 @@
     const st = data.settings;
     S = Object.assign({}, window.STRINGS.tr, window.STRINGS[st.language] || {}, st.strings || {});
     SOUND.enabled = st.sounds !== false; SOUND.setVolume(st.volume ?? 0.6);
+    MUSIC.setEnabled(st.themeMusic !== false && !CAPTURE_PLAIN); MUSIC.setVolume(st.themeVolume ?? 0.5);
     document.documentElement.lang = st.language || 'tr';
     $('.tab[data-t="0"]').textContent = t('games'); $('.tab[data-t="1"]').textContent = t('media');
     $('.tb[data-t="2"]').innerHTML = ICONS.search; $('.tb[data-t="3"]').innerHTML = ICONS.gear;
@@ -931,6 +981,12 @@
   api.on('game-resumed', () => { closeAll(); paused = false; $('#blackout').classList.add('fast'); $('#blackout').classList.remove('off'); launchScreen('black'); });
   api.on('game-paused', (d) => { if (d && d.id) { running = d.id; paused = true; layoutRow(true); renderHero(); } });
   api.on('confirm-quit', (d) => quitDialog(d));
+  // snd0.at9 was turned into Ogg in the background: the game has music now
+  api.on('theme-update', (d) => {
+    if (!d || !data) return;
+    for (const g of [...data.games, ...(data.allGames || [])]) if (g.id === d.id && g.theme) { g.theme.music = d.music; g.theme.musicSource = d.source; }
+    const f = focusedGame(); if (f && f.id === d.id) themeFocus(true);
+  });
   // Home over a running game (Ctrl+Alt+Home, Alt+Tab to the menu).
   api.on('show-home', (d) => {
     launchScreen('off'); const bo = $('#blackout'); bo.classList.remove('fast'); bo.classList.add('off');
@@ -966,6 +1022,13 @@
     if (lf.ps5 && lf.ps5.logo && !data.user.boot) data.user.boot = (await BOOT.markUrl(lf.ps5.logo, 'ps5').catch(() => null)) || null;
     if (lf.x360 && lf.x360.logo) X360.setHomeMark(await BOOT.markUrl(lf.x360.logo, 'x360').catch(() => null));
     SOUND.loadUser(data.user.sounds);
+    MUSIC.restore(data.state && data.state.musicPos);
+    // Quiet while an intro plays, a game starts or runs, or the menu is hidden.
+    let quiet = null;
+    setInterval(() => {
+      const q = !!(bootP.on || $('#intro').classList.contains('on') || launching || running || $('#launch').classList.contains('on') || document.hidden);
+      if (q !== quiet) { if (quiet !== null || q) MUSIC.hold(q); quiet = q; }
+    }, 150);
     if (forced.tab) nav.tab = forced.tab;
     consoleId = CONS.normalize(forced.console || (data.state && data.state.console));
     if (forced.scrim === false) stage.classList.add('noscrim');
@@ -1003,7 +1066,7 @@
       try { await api.capture(); } finally { api.captureDone(); }
     }
     window.__ps5 = { dispatch, get nav() { return nav; }, get items() { return items; }, get overlays() { return overlays.length; },
-      get console() { return consoleId; }, get boot() { return bootP.on ? bootP.active.kind : null; }, skipBoot: () => bootP.skip(), get switching() { return switching; }, get guardInfo() { return { switching, launching, busyMs: Math.round(guard.busyUntil - performance.now()), consoleId, running: !!running, bootWanted: { ps5: bootWanted('ps5'), x360: bootWanted('x360') }, bootActive: !!bootP.active, shown: data && data.boot && data.boot.shown }; }, get x360() { return xdash && xdash.current(); }, get xdash() { return xdash; }, openList: (w) => (w === 'library' ? libraryOverlay() : w === 'manage' ? manageOverlay() : settingsOverlay()),
+      get console() { return consoleId; }, get boot() { return bootP.on ? bootP.active.kind : null; }, skipBoot: () => bootP.skip(), get switching() { return switching; }, get guardInfo() { return { switching, launching, busyMs: Math.round(guard.busyUntil - performance.now()), consoleId, running: !!running, bootWanted: { ps5: bootWanted('ps5'), x360: bootWanted('x360') }, bootActive: !!bootP.active, shown: data && data.boot && data.boot.shown }; }, get x360() { return xdash && xdash.current(); }, get xdash() { return xdash; }, get music() { return MUSIC.state(); }, get musicEvents() { return MUSIC.events; }, themeFocus, openList: (w) => (w === 'library' ? libraryOverlay() : w === 'manage' ? manageOverlay() : settingsOverlay()),
       launchScreen: (mode, id) => launchScreen(mode, data.games.find((g) => g.id === id)) };
   }
   main().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<pre style="position:fixed;left:20px;top:20px;color:#f88;z-index:99;font:16px monospace;white-space:pre-wrap">${esc(e.stack || e)}</pre>`); });

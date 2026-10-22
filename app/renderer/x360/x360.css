@@ -20,6 +20,14 @@
 #x360 .x-bg { position: absolute; inset: 0;
   background: linear-gradient(to bottom, rgb(59,58,61) 0px, rgb(61,60,63) 45px, rgb(66,65,68) 90px, rgb(71,70,73) 135px, rgb(76,75,78) 180px, rgb(81,80,83) 225px, rgb(89,88,91) 270px, rgb(96,96,99) 315px, rgb(106,106,109) 360px, rgb(116,116,119) 405px, rgb(128,127,130) 450px, rgb(141,140,143) 495px, rgb(151,150,153) 540px, rgb(159,160,163) 585px, rgb(172,171,174) 630px, rgb(177,177,180) 675px, rgb(180,181,184) 720px, rgb(185,185,188) 765px, rgb(182,181,184) 810px, rgb(176,175,177) 855px, rgb(167,166,169) 900px, rgb(158,157,160) 945px, rgb(151,150,153) 990px, rgb(143,142,145) 1035px, rgb(139,138,141) 1080px); }
 
+/* Game theme (1.5): the focused game's picture, blurred and tinted, over the dashboard gradient.
+   Nothing is drawn while no theme is set. */
+#x360 .x-theme { position: absolute; inset: 0; pointer-events: none; }
+#x360 .x-theme .xt { position: absolute; inset: -40px; opacity: 0; transition: opacity 900ms var(--x-ease);
+  background-size: cover; background-position: center 30%; filter: blur(22px) saturate(1.1) brightness(0.62); }
+#x360 .x-theme .xt::after { content: ''; position: absolute; inset: 0; background: linear-gradient(to bottom, color-mix(in srgb, var(--xacc) 35%, rgba(20,20,22,0.55)) 0%, rgba(30,30,32,0.25) 45%, color-mix(in srgb, var(--xacc) 25%, rgba(10,10,12,0.6)) 100%); }
+#x360 .x-theme .xt.on { opacity: 1; }
+
 /* Gamertag and gamerpic, top right */
 #x360 .x-user { position: absolute; right: 136px; margin-right: var(--xr, 0px); top: 53px; height: 48px; display: flex; align-items: center; }
 #x360 .x-user .gt { font-size: 30px; line-height: 48px; font-weight: 400; margin-right: 15.5px; color: rgb(226,225,228); text-shadow: 1px 1px 2px rgba(0,0,0,0.35), 0 0 1px rgba(255,255,255,0.5); letter-spacing: 0; }
