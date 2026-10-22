@@ -88,7 +88,7 @@ Sonradan değiştirmek istediğinde oyunun seçeneklerinden **Oyunu Düzenle**'y
 | Oyun seçenekleri | Menü (≡) | O |
 | Oyunlar / Medya sekmesi | LB, RB | Q, E |
 | Ana ekrana dön | Xbox düğmesi ya da Görünüm + Menü | H |
-| PS5 / Xbox 360 menüsü arasında geç | Sol çubuğa bas (L3, önceki) ya da sağ çubuğa bas (R3, sonraki) | PageUp, PageDown |
+| Menüler arasında geç (PS5 → Xbox 360 → Switch) | Sol çubuğa bas (L3, önceki) ya da sağ çubuğa bas (R3, sonraki) | PageUp, PageDown |
 | Oyun açıkken menüye dön | Xbox düğmesine ya da Görünüm + Menü'ye 1 sn basılı tut | Esc'ye 1 sn basılı tut ya da Ctrl+Alt+Home |
 | Menüden çık | | Alt+F4 |
 
@@ -162,16 +162,24 @@ GitHub'a hesapsız bağlanılır (saatte 60 istek sınırı); aynı cevaplar ön
 
 ## Xbox 360 menüsü
 
-PS5 ana ekranının yanında ikinci bir menü olarak 2010-2013 dönemi Xbox 360 panosuna benzeyen bir ekran var. Menüler arasında kumandada çubuklara basarak (L3 önceki, R3 sonraki menü; iki menü olduğu için ikisi de diğerine geçer), klavyede PageUp / PageDown ile geçilir; yeni menü basılan tuşun yönünden kayarak gelir. Yukarı/aşağı her iki menüde de yalnızca o menünün içinde gezinir, PS5 menüsünün gezinmesi 1.3 ile aynıdır. Bir pencere ya da menü açıkken, intro oynarken ve oyun başlatılırken geçiş yapılmaz. Çubukla gezinirken kazara basılan ya da uzun basılı tutulan L3/R3 geçiş yapmaz; Xbox 360 panosunda ayrıca "PS5 Menüsü" kutucuğu da vardır. Oyun listesi iki menüde ortaktır, son kullandığın menü bir sonraki açılışta yine gelir. Oyundan dönünce hangi menüden başlattıysan o açılır.
+PS5 ana ekranının yanında ikinci bir menü olarak 2010-2013 dönemi Xbox 360 panosuna benzeyen bir ekran var. Menüler arasında kumandada çubuklara basarak (L3 önceki, R3 sonraki menü; sıra PS5 → Xbox 360 → Switch → PS5), klavyede PageUp / PageDown ile geçilir; yeni menü basılan tuşun yönünden kayarak gelir. Yukarı/aşağı her iki menüde de yalnızca o menünün içinde gezinir, PS5 menüsünün gezinmesi 1.3 ile aynıdır. Bir pencere ya da menü açıkken, intro oynarken ve oyun başlatılırken geçiş yapılmaz. Çubukla gezinirken kazara basılan ya da uzun basılı tutulan L3/R3 geçiş yapmaz; Xbox 360 panosunda ayrıca "PS5 Menüsü" kutucuğu da vardır. Oyun listesi iki menüde ortaktır, son kullandığın menü bir sonraki açılışta yine gelir. Oyundan dönünce hangi menüden başlattıysan o açılır.
+
+## Nintendo Switch menüsü
+
+Üçüncü menü, Switch'in güncel HOME Menu'süne benzeyen bir ekran. Yalnız menüsü "Nintendo Switch" olan oyunlar görünür (Oyunu Düzenle > Menü). Gezinme Switch'teki gibi: ortada yatay oyun şeridi (ekrana dört karo sığar, sonrası kayar; 12 oyundan sonra "Tüm yazılımlar" karosu kitaplığı açar), altında yuvarlak düğmeler (Kitaplık, İstatistikler, Oyun ekle, Masaüstü, Konsollar, Yönet, Güncellemeler, Ayarlar, Güç), üstte profil, saat, Wi-Fi ve varsa pil. Ayarlar > **Switch teması** ile Beyaz ya da Siyah seçilir.
+
+Switch menüsünde "Oyun ekle" ekranı menüyü Nintendo Switch olarak açar. **Eden şablonu** satırı Eden emülatörünü `Masaüstü\Ai projeler\Eden\eden.exe` yerinde arar (bulamazsa sorar), sonra oyun dosyasını (.nsp, .xci) sorar ve programı, parametreleri (`-f -g "<oyun dosyası>"`), çalışma klasörünü ve köşeli parantezleri atılmış oyun adını doldurur.
+
+Görünüm gerçek ekran görüntülerinden ölçülüp sıfırdan çizildi; Nintendo'ya ait görsel, simge, yazı tipi ya da ses yoktur. Simgeler bu proje için çizildi, yazı tipi pakette gelen Noto Sans.
 
 ## Açılış introları
 
-Her menünün ilk açılışında konsolun açılış animasyonuna benzeyen kısa bir intro oynar: program açılırken son kullandığın menünün introsu, o oturumda diğer menüye ilk geçişte de onunki. Her intro bir oturumda bir kez oynar, sonraki geçişler normal kaymayla olur, oyundan dönüşte intro oynamaz. A, B, Enter, Esc, Xbox tuşu ya da tıklama introyu geçer; intro sürerken yön tuşları ve menü değiştirme (L3/R3, PageUp/PageDown) yok sayılır. Ayarlar > **Konsol Açılış İntrosu** satırından kapatılabilir (Her açılışta bir kez / Kapalı).
+Her menünün ilk açılışında konsolun açılış animasyonuna benzeyen kısa bir intro oynar: program açılırken son kullandığın menünün introsu, o oturumda başka bir menüye ilk geçişte de onunki. Her intro bir oturumda bir kez oynar, sonraki geçişler normal kaymayla olur, oyundan dönüşte intro oynamaz. A, B, Enter, Esc, Xbox tuşu ya da tıklama introyu geçer; intro sürerken yön tuşları ve menü değiştirme (L3/R3, PageUp/PageDown) yok sayılır. Ayarlar > **Konsol Açılış İntrosu** satırından kapatılabilir (Her açılışta bir kez / Kapalı).
 
 İstersen introları kendi dosyalarınla değiştirebilirsin. Dosyalar `%APPDATA%\Definitely Not a Console\intro\` klasörüne konur (klasör yoksa program ilk açılışta oluşturur). Her konsol için sıra şöyledir:
 
-1. `ps5-boot.mp4` / `ps5-boot.webm` ya da `x360-boot.mp4` / `x360-boot.webm` varsa video kendi sesiyle tam ekran oynar. Videonun sonu menüye kararmadan geçer (son kare oynamaya devam ederken menünün üstünden yavaşça çekilir, arada siyah kare ya da parlama olmaz). PS5 videosu konsolun "PS düğmesine bas" ekranını da içerdiği için o zaman menünün kendi giriş ekranı ayrıca gösterilmez.
-2. Video yoksa program introyu kendisi çizer. Ses için `ps5-boot.wav/.mp3/.ogg` ya da `x360-boot.wav/.mp3/.ogg`, logo için `ps5-logo.png` ya da `x360-logo.png` (arka planı saydam PNG) kullanılır.
+1. `ps5-boot.mp4` / `ps5-boot.webm`, `x360-boot.mp4` / `x360-boot.webm` ya da `switch-boot.mp4` / `switch-boot.webm` varsa video kendi sesiyle tam ekran oynar. Videonun sonu menüye kararmadan geçer (son kare oynamaya devam ederken menünün üstünden yavaşça çekilir, arada siyah kare ya da parlama olmaz). PS5 videosu konsolun "PS düğmesine bas" ekranını da içerdiği için o zaman menünün kendi giriş ekranı ayrıca gösterilmez.
+2. Video yoksa program introyu kendisi çizer. Ses için `ps5-boot.wav/.mp3/.ogg`, `x360-boot.wav/.mp3/.ogg` ya da `switch-boot.wav/.mp3/.ogg`, logo için `ps5-logo.png`, `x360-logo.png` ya da `switch-logo.png` (arka planı saydam PNG) kullanılır.
 3. Bunlar da yoksa programın kendi sesi ve kendi işareti kullanılır.
 
 Logo dosyaları introdan başka yerlerde de kullanılır: `ps5-logo.png`'nin sol taraftaki sembolü (beyaza boyanarak) PS5 giriş ekranındaki işaretin yerine geçer (kendi `boot.png`'n varsa o önceliklidir); `x360-logo.png`'nin üstteki küresi Xbox 360 menüsünün düğme ipuçlarında Rehber (Xbox) düğmesinin simgesi olarak ayarlanır; intronun sonunda küre ve yazı ayrı ayrı belirir.
@@ -179,7 +187,7 @@ Logo dosyaları introdan başka yerlerde de kullanılır: `ps5-logo.png`'nin sol
 Videonun başını ve sonunu dosyaya dokunmadan kırpmak için aynı klasöre `intro.json` koy, saniye cinsinden:
 
 ```json
-{ "ps5": { "start": 1.02, "end": 13.8 }, "x360": { "start": 0.1, "end": 7.6 } }
+{ "ps5": { "start": 1.02, "end": 13.8 }, "x360": { "start": 0.1, "end": 7.6 }, "switch": { "start": 1.17, "end": 6.95 } }
 ```
 
 `start` videonun başındaki siyah ya da gereksiz kısmı atlar, `end` geldiğinde menüye geçiş başlar. Video açılamazsa (bozuk dosya, desteklenmeyen biçim) 2,5 saniye içinde çizilen introya geçilir.
