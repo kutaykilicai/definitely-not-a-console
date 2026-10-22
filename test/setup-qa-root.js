@@ -85,6 +85,13 @@ if (mode === 'updates') {
   fs.writeFileSync(path.join(D, 'ports.json'), JSON.stringify({ version: 1, settings: { waitDays: 3, keepBackups: 2, checkHours: 24, feed: true }, ports: [port('ornek', 'Örnek Port', 'test/ornek', A, '^ornek-win\\.zip$'), port('taze', 'Taze Port', 'test/taze', B, '^taze-win\\.zip$')] }, null, 2));
   fs.writeFileSync(path.join(base, 'procs.json'), '[]');
 }
+if (mode === 'stats') {
+  // play history: totals from before 1.5.0 (no sessions) and sessions on the last days
+  doc.games.push(g('st-a', 'Çok Oynanan', { args: '21' }), g('st-b', 'Az Oynanan', {}), g('st-c', 'Eski Oyun', {}), g('st-x', 'Xbox İstatistik', { console: 'x360' }));
+  const now = Date.now(), H = 3600e3, D = 86400e3;
+  state = { console: 'ps5', focusId: 'st-a', lastPlayed: { 'st-a': now - 2 * H, 'st-b': now - 1 * D, 'st-c': now - 40 * D, 'st-x': now - 3 * D }, playSeconds: { 'st-a': 30 * 3600 + 120, 'st-b': 2 * 3600, 'st-c': 5 * 3600, 'st-x': 3600 },
+    sessions: [{ id: 'st-a', end: now - 3 * D, sec: 3 * 3600 }, { id: 'st-a', end: now - 1 * D, sec: 5400 }, { id: 'st-b', end: now - 1 * D, sec: 1800 }, { id: 'st-a', end: now - 2 * H, sec: 2 * 3600 + 600 }, { id: 'st-x', end: now - 3 * D, sec: 3600 }] };
+}
 if (mode === 'many') for (let i = 0; i < 300; i++) doc.games.push(g(`x360-${i}`, `Xbox Oyunu ${i} İğüşçö`, { console: 'x360', args: '1' }));
 if (mode === 'flow' || mode === 'close') settings.bootIntro = 'once';
 if (mode === 'single') doc.games = doc.games.find((x) => x.console === 'x360');   // one game, not a list

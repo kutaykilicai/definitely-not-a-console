@@ -73,8 +73,10 @@ const iso = (t) => new Date(t).toISOString().replace(/\.\d+Z$/, 'Z');
   await ok('issues: an open "crash on AMD" issue after the release holds it; one about an older version does not', async () => {
     st.repos['me/ornek'].issues = [{ number: 7, title: 'v1.0 crashes on start', body: 'old one', created_at: iso(NOW - 4 * DAY), updated_at: iso(NOW - 4 * DAY), html_url: 'x' }];
     let r = await PT.checkAll(doc, { gh, now: NOW }); assert.equal(r[0].status, 'update', JSON.stringify(r[0].hold));
+    st.repos['me/ornek'].issues.push({ number: 9, title: 'Feature: quick save', body: 'Steps to reproduce / does it crash? (template)', created_at: iso(NOW - 2 * DAY), updated_at: iso(NOW - 2 * DAY), html_url: 'x' });
+    r = await PT.checkAll(doc, { gh, now: NOW }); assert.equal(r[0].status, 'update', 'a feature request with template words is not a problem report');
     st.repos['me/ornek'].issues.push({ number: 8, title: 'Black screen on AMD after update', body: 'Radeon 6700, 1.1', created_at: iso(NOW - 2 * DAY), updated_at: iso(NOW - 2 * DAY), html_url: `${B}/i/8` });
-    r = await PT.checkAll(doc, { gh, now: NOW }); assert.equal(r[0].status, 'hold'); assert.equal(r[0].hold[0].number, 8);
+    r = await PT.checkAll(doc, { gh, now: NOW }); assert.equal(r[0].status, 'hold'); assert.deepEqual(r[0].hold.map((h) => h.number), [8]);
     st.repos['me/ornek'].issues = [];
   });
   await ok('rate limit: 403 falls back to the cached answer, no crash', async () => {

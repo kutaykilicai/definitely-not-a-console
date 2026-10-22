@@ -321,6 +321,42 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
           check(`${c}: lists closed`, (await st()).ov === 0, JSON.stringify(await st()));
         }
       }
+      if (MODE === 'stats') {
+        const shot = async (name) => { if (process.env.QA_SHOT) fs.writeFileSync(`${process.env.QA_SHOT}/${name}.png`, (await win.webContents.capturePage()).toPNG()); };
+        const toastTxt = () => js('(() => { const t = document.querySelector("#toast"); return t.classList.contains("on") ? t.textContent.trim() : ""; })()');
+        await settle();
+        const ct = await waitFor(async () => /Devam et/.test(await toastTxt()), 4000, 100);
+        info.continue = await toastTxt();
+        check('"Devam et" card on start: last game and its last session', ct && /Çok Oynanan/.test(info.continue) && /2 sa 10 dk/.test(info.continue), info.continue);
+        check('and the last game is focused', (await js('window.__ps5.items[window.__ps5.nav.row].id')) === 'st-a');
+        await js('document.querySelector("#toast").classList.remove("on")');
+        await js('window.__ps5.openList("settings")'); await sleep(300);
+        const rows = await js('[...document.querySelectorAll("#overlay .full .panel .it")].map((e) => e.textContent)');
+        const k = rows.findIndex((r) => /^Oynama istatistikleri/.test(r)); for (let i = 0; i < k; i++) { await press('down'); await sleep(30); }
+        await press('select'); await sleep(400);
+        const sv = await js(`(() => { const el = document.querySelector('#overlay .full.stats'); if (!el) return null; return { sum: [...el.querySelectorAll('.st-sum .v')].map((e) => e.textContent), bars: [...el.querySelectorAll('.st-week .bar')].map((b) => b.style.height), rows: [...el.querySelectorAll('.st-row.it')].map((r) => [...r.children].map((c) => c.textContent).join('|')) }; })()`);
+        info.stats = sv;
+        check('statistics: total of all games (pre-1.5 included), most played first', sv && sv.sum[0] === '38 sa 2 dk' && /^\|Çok Oynanan\|30 sa 2 dk\|Bugün\|3 sa 0 dk\|3$/.test(sv.rows[0]), JSON.stringify(sv));
+        check('statistics: today and last 7 days from sessions, 7 bars scaled to the busiest day', sv && sv.sum[1] === '2 sa 10 dk' && sv.sum[2] === '8 sa 10 dk' && sv.bars.length === 7 && sv.bars[3] === '100%' && sv.bars[6] === '54%', JSON.stringify(sv && [sv.sum, sv.bars]));
+        check('statistics: an old game without sessions shows totals, no longest', sv && sv.rows.some((r) => /^\|Eski Oyun\|5 sa 0 dk\|40 gün önce\|-\|-$/.test(r)), JSON.stringify(sv && sv.rows));
+        await shot('ps5_stats');
+        await press('back'); await sleep(250); await press('back'); await sleep(300);
+        // a 21 s session: the summary toast after the game
+        await press('select');
+        await waitFor(() => runner.running, 5000);
+        await waitFor(() => !runner.running, 40000, 200); await sleep(1500);
+        info.session = await toastTxt();
+        check('after the game: "Çok Oynanan: 21 sn…" summary with today\'s total', /Çok Oynanan: 1 dk'dan az oynadın|Çok Oynanan: \d+ dk oynadın/.test(info.session) && /Bugün toplam 2 sa 10 dk/.test(info.session), info.session);
+        const stt = readJson(FILES.state, {});
+        check('state.json: the session was logged', Array.isArray(stt.sessions) && stt.sessions.length === 6 && stt.sessions[5].id === 'st-a' && stt.sessions[5].sec >= 20, JSON.stringify(stt.sessions && stt.sessions.slice(-1)));
+        await press('consoleNext'); await settle(); await sleep(400);
+        await js('window.__ps5.openList("settings")'); await sleep(300);
+        const rows2 = await js('[...document.querySelectorAll("#overlay .full .panel .it")].map((e) => e.textContent)');
+        const k2 = rows2.findIndex((r) => /^Oynama istatistikleri/.test(r)); for (let i = 0; i < k2; i++) { await press('down'); await sleep(30); }
+        await press('select'); await sleep(400);
+        await shot('x360_stats');
+        check('X360: the statistics screen opens in the 360 look', await js('!!document.querySelector("#stage.c-x360 #overlay .full.stats")'));
+      }
       if (MODE === 'updates') {
         const path = require('path');
         const PD = '/tmp/qa İndirilenler/Portlar'; const A = path.join(PD, 'Örnek Port'); const PROCS = process.env.PS5MENU_FAKE_PROCS;

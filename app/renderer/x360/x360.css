@@ -84,3 +84,10 @@
 
 #x360 .x-tile .ic.at { margin: 0; }
 #x360 .x-panel:not(.cur) .x-tile .lb { opacity: 0.45; }
+
+/* Play statistics in the Xbox 360 look */
+#stage.c-x360 #overlay .full.stats .st-week .bar { background: var(--x-green); border-radius: 0; }
+#stage.c-x360 #overlay .full.stats .st-row.focus { background: var(--x-green); }
+#stage.c-x360 #overlay .full.stats .st-row.focus::after { display: none; }
+#stage.c-x360 #overlay .full.stats .st-row .ic { border-radius: 0; }
+#stage.c-x360 #overlay .full.stats .st-sum .v { font-weight: 300; }

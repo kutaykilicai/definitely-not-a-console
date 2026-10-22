@@ -262,7 +262,14 @@
     const tint = $('#scrim .s-tint');
     const own = g && g.art && g.art.background;
     const acc = themeOn() && g && !own && g.theme && g.theme.accent;
-    if (tint) { if (acc) tint.style.setProperty('--gacc', acc); tint.classList.toggle('on', !!acc && consoleId === 'ps5'); }
+    if (tint) {
+      const on = !!acc && consoleId === 'ps5';
+      if (acc) tint.style.setProperty('--gacc', acc);
+      clearTimeout(tint._off);
+      if (on) { if (!tint.classList.contains('live')) { tint.classList.add('live'); void tint.offsetWidth; } tint.classList.add('on'); }
+      else if (tint.classList.contains('on')) { tint.classList.remove('on'); tint._off = setTimeout(() => tint.classList.remove('live'), 750); }
+      else tint.classList.remove('live');
+    }
   }
   function onFocusChanged(instant) {
     themeFocus(instant);
@@ -410,6 +417,7 @@
     const entries = [];
     if (running === g.id) entries.push({ label: t('closeGame'), icon: ICONS.power, danger: true, run: () => api.kill() });
     entries.push({ label: t('info'), icon: ICONS.info, run: () => infoOverlay(g) });
+    entries.push({ label: t('statsOpen'), icon: ICONS.chart || ICONS.clock, run: () => statsOverlay(g.id) });
     entries.push({ label: t('openLocation'), icon: ICONS.folder, run: () => api.open('game-folder', g.id).then((r) => r && toast(t('notFound'), r)) });
     entries.push({ label: t('editGame'), icon: ICONS.edit, run: () => editOverlay(g) });
     entries.push({ label: t('removeHome'), icon: ICONS.check, run: async () => { data = await api.hideGame(g.id); refresh(); } });
@@ -597,6 +605,7 @@
       { label: t('themeMusic'), icon: ICONS.music || ICONS.check, value: st.themeMusic !== false ? t('on') : t('off'), stay: true, run: () => set('themeMusic', data.settings.themeMusic === false) },
       { label: t('themeVolume'), icon: ICONS.music || ICONS.check, value: `%${Math.round((st.themeVolume ?? 0.5) * 100)}`, stay: true, run: () => { const v = [0.2, 0.35, 0.5, 0.7, 0.85, 1]; const i = v.findIndex((x) => x > (data.settings.themeVolume ?? 0.5) + 0.01); set('themeVolume', v[i < 0 ? 0 : i]); } },
       { label: t('themeOn'), icon: ICONS.image, value: st.theme !== false ? t('on') : t('off'), stay: true, run: () => set('theme', data.settings.theme === false).then(() => { themeFocus(true); if (xdash) xdash.applyTheme(true); }) },
+      { label: t('stats'), icon: ICONS.chart || ICONS.clock, stay: true, run: () => statsOverlay() },
       { label: t('updates'), icon: ICONS.update || ICONS.check, value: updCount() ? t('updCount', { n: updCount() }) : '', stay: true, run: () => updatesOverlay() },
       { label: t('bootIntro'), icon: ICONS.info, value: st.bootIntro === 'off' ? t('bootOff') : t('bootOnce'), stay: true, run: () => set('bootIntro', data.settings.bootIntro === 'off' ? 'once' : 'off') },
       { label: t('introScreen'), icon: ICONS.info, value: introLabel(st.intro), stay: true, run: () => set('intro', intros[(intros.indexOf(data.settings.intro) + 1) % 3]) },
@@ -611,6 +620,64 @@
     const o = listOverlay({ entries: () => { Object.assign(st, data.settings); return entries(); }, full: true, title: t('settings'), keepOpen: true });
     o.input = ((orig) => (a) => { orig(a); })(o.input);
     pushOverlay(o);
+  }
+
+  // ---------- play statistics ----------
+  // From state.json: playSeconds / lastPlayed per game (all time) and sessions (since 1.5.0).
+  function statsData() {
+    const sessions = (data.state && Array.isArray(data.state.sessions)) ? data.state.sessions : [];
+    const all = data.allGames || data.games;
+    const tz = data.settings.timeZone || 'Europe/Istanbul';
+    const dayKey = (ts) => new Intl.DateTimeFormat('en-CA', { timeZone: tz, year: 'numeric', month: '2-digit', day: '2-digit' }).format(new Date(ts));
+    const today = dayKey(Date.now());
+    const days = []; for (let i = 6; i >= 0; i--) { const ts = Date.now() - i * 86400e3; days.push({ key: dayKey(ts), label: new Intl.DateTimeFormat(data.settings.language === 'en' ? 'en-GB' : 'tr-TR', { timeZone: tz, weekday: 'short' }).format(new Date(ts)), sec: 0 }); }
+    const per = {};
+    for (const x of sessions) {
+      const p = per[x.id] || (per[x.id] = { n: 0, longest: 0 }); p.n++; p.longest = Math.max(p.longest, x.sec || 0);
+      const d = days.find((y) => y.key === dayKey(x.end)); if (d) d.sec += x.sec || 0;
+    }
+    const games = all.filter((g) => (g.playSeconds || 0) > 0 || per[g.id]).map((g) => ({ g, total: g.playSeconds || 0, last: g.lastPlayed || 0, n: (per[g.id] || {}).n || 0, longest: (per[g.id] || {}).longest || 0 }))
+      .sort((a, b) => b.total - a.total || b.last - a.last);
+    return { games, days, today: (days.find((d) => d.key === today) || { sec: 0 }).sec, week: days.reduce((a, d) => a + d.sec, 0), total: games.reduce((a, x) => a + x.total, 0), hasSessions: sessions.length > 0 };
+  }
+  function statsOverlay(focusId) {
+    const S = statsData();
+    const el = document.createElement('div'); el.className = 'full stats';
+    const max = Math.max(1, ...S.days.map((d) => d.sec));
+    el.innerHTML = `<h1>${esc(t('stats'))}</h1>
+      <div class="st-sum"><div><div class="k">${esc(t('statsTotal'))}</div><div class="v">${esc(fmtDuration(S.total))}</div></div><div><div class="k">${esc(t('statsToday'))}</div><div class="v">${esc(fmtDuration(S.today))}</div></div><div><div class="k">${esc(t('statsWeek'))}</div><div class="v">${esc(fmtDuration(S.week))}</div></div></div>
+      <div class="st-week">${S.days.map((d) => `<div class="b"><div class="bar" style="height:${Math.round((d.sec / max) * 100)}%"></div><div class="d">${esc(d.label)}</div></div>`).join('')}</div>
+      ${S.hasSessions ? '' : `<div class="st-note">${esc(t('statsOld'))}</div>`}
+      <div class="st-list"></div>`;
+    const list = el.querySelector('.st-list');
+    const o = { el, index: Math.max(0, S.games.findIndex((x) => x.g.id === focusId)), kind: 'stats', hints: [['B', t('back')]] };
+    o.render = () => {
+      if (!S.games.length) { list.innerHTML = `<div class="st-empty">${esc(t('statsNone'))}</div>`; return; }
+      list.innerHTML = `<div class="st-row st-head"><div class="ic"></div><div class="n">${esc(t('statsTitle'))}</div><div class="c">${esc(t('statsTotal'))}</div><div class="c">${esc(t('statsLast'))}</div><div class="c">${esc(t('statsLongest'))}</div><div class="c s">${esc(t('statsSessions'))}</div></div>` +
+        S.games.map((x, i) => `<div class="st-row it${i === o.index ? ' focus' : ''}" data-i="${i}"><div class="ic" style="background-image:${x.g.art && x.g.art.icon ? esc(cssUrl(x.g.art.icon)) : 'none'}"></div><div class="n">${esc(x.g.title)}</div><div class="c">${esc(fmtDuration(x.total))}</div><div class="c">${esc(fmtLast(x.last))}</div><div class="c">${x.longest ? esc(fmtDuration(x.longest)) : '-'}</div><div class="c s">${x.n || '-'}</div></div>`).join('');
+      keepInView(list, list.querySelector('.it.focus'), 6);
+    };
+    o.input = (a) => {
+      if (a === 'up' || a === 'down') { const n = NAV.listMove(o.index, a, S.games.length); if (n !== o.index) { o.index = n; SOUND.play('focus'); o.render(); } else SOUND.play('bump'); }
+      else if (a === 'back' || a === 'options' || a === 'select') popOverlay();
+    };
+    pushOverlay(o);
+  }
+  // after a game: how long, today's total, and a record if it was the longest session
+  function sessionToast(d) {
+    const g = (data.allGames || data.games).find((x) => x.id === d.id); if (!g || !(d.seconds > 20)) return;
+    const S = statsData(); const me = S.games.find((x) => x.g.id === g.id);
+    const record = me && me.n > 1 && Math.round(d.seconds) >= me.longest;
+    toast(t('sessionSummary', { name: g.title, dur: fmtDuration(d.seconds) }), [t('sessionToday', { dur: fmtDuration(S.today) }), record ? t('sessionRecord') : ''].filter(Boolean).join(' · '), g.art && g.art.icon);
+  }
+  // "Devam et": on a fresh start the last game is focused; a card says what and when
+  let continueShown = false;
+  function continueCard() {
+    if (continueShown || CAPTURE || REOPEN || running) return; continueShown = true;
+    const g = [...data.games].filter((x) => cOf(x) === consoleId && x.lastPlayed).sort((a, b) => b.lastPlayed - a.lastPlayed)[0];
+    if (!g || Date.now() - g.lastPlayed > 30 * 86400e3) return;
+    const ss = ((data.state && data.state.sessions) || []).filter((x) => x.id === g.id); const last = ss[ss.length - 1];
+    toast(t('continueTitle'), t('continueBody', { name: g.title, dur: last ? fmtDuration(last.sec) : fmtLast(g.lastPlayed) }), g.art && g.art.icon);
   }
 
   // ---------- port updates (Ayarlar > Güncellemeler) ----------
@@ -1077,7 +1144,7 @@
     const bo = $('#blackout'); bo.classList.remove('fast'); bo.classList.add('off');
     launchScreen('off');
     if (d.failed) toast(t('launchFailed'), '');
-    else { const g = data.games.find((x) => x.id === d.id); if (g && d.seconds > 20) toast(t('gameClosed', { name: g.title }), `${t('playTime')}: ${fmtDuration(d.seconds)}`, g.art && g.art.icon); }
+    else sessionToast(d);
     SOUND.startAmbient(true);
   });
 
@@ -1104,7 +1171,7 @@
     let quiet = null;
     setInterval(() => {
       const q = !!(bootP.on || $('#intro').classList.contains('on') || launching || running || $('#launch').classList.contains('on') || document.hidden);
-      if (q !== quiet) { if (quiet !== null || q) MUSIC.hold(q); quiet = q; }
+      if (q !== quiet) { if (quiet !== null || q) MUSIC.hold(q); quiet = q; if (!q) later('continue', 900, () => { if (!quiet && !overlays.length && !switching) continueCard(); }); }
     }, 150);
     if (forced.tab) nav.tab = forced.tab;
     consoleId = CONS.normalize(forced.console || (data.state && data.state.console));

@@ -17,7 +17,7 @@ const writeJson = (f, v) => { fs.mkdirSync(P.dirname(f), { recursive: true }); c
 
 const DEFAULTS = {
   checkHours: 24, waitDays: 3, keepBackups: 2,
-  keywords: ['crash', 'crashes', 'broken', 'regression', 'black screen', 'does not start', "doesn't start", 'won\'t start', 'freeze', 'amd', 'radeon', 'save', 'corrupt'],
+  keywords: ['crash', 'crashes', 'crashing', 'broken', 'regression', 'black screen', 'does not start', "doesn't start", "won't start", 'freeze', 'freezes', 'amd', 'radeon', 'device lost', 'corrupted save', 'save corrupt', 'lost save', 'save lost'],
   feed: { url: 'https://thegamingemporium.com/rss.xml', category: 'decompilations-recompilations', page: 'https://thegamingemporium.com/categories/decompilations-recompilations/' },
 };
 
@@ -128,7 +128,9 @@ function holdReasons(rel, { issues = [], now = Date.now(), waitDays = 3, keyword
   for (const it of issues || []) {
     if (it.pull_request) continue;
     if (Date.parse(it.created_at) < pub) continue;
-    const text = `${it.title || ''}\n${it.body || ''}`;
+    // the title counts; the body only on issues labelled bug/crash/regression (bug templates are full of these words)
+    const labelled = (it.labels || []).some((l) => /bug|crash|regression/i.test(typeof l === 'string' ? l : l && l.name));
+    const text = `${it.title || ''}\n${labelled ? it.body || '' : ''}`;
     if (!kw.test(text)) continue;
     // an issue that names another version is about that one
     const vers = [...text.matchAll(/v?(\d+\.\d+(?:\.\d+)?(?:-[0-9a-z.]+)?)/gi)].map((m) => m[1]);
@@ -220,6 +222,8 @@ function pruneBackups(backupsDir, id, keep, log = () => {}) {
   return gone.map((b) => b.name);
 }
 
+const PT_sizeOf = (dir) => walk(dir).reduce((a, f) => { try { return a + fs.statSync(P.join(dir, f)).size; } catch { return a; } }, 0);
+function freeBytes(dir) { try { let d = dir; while (!exists(d)) d = P.dirname(d); const s = fs.statfsSync(d); return Number(s.bavail) * Number(s.bsize); } catch { return null; } }
 // The release zip's top folder, when everything sits in one folder (port.zipRoot can name it).
 function zipRootOf(stage, port) {
   if (port.zipRoot) return P.join(stage, port.zipRoot);
@@ -254,7 +258,10 @@ async function install(port, result, { workDir, backupsDir, running = () => fals
   for (const e of exes) if (!newFiles.some((f) => f.replace(/\\/g, '/').toLowerCase() === e.toLowerCase())) throw new Error(`paket beklenen dosyayı içermiyor: ${e}`);
   step('extracted', newFiles.length);
   if (await running()) { step('blocked', 'game started during download'); fs.rmSync(tmp, { recursive: true, force: true }); return { ok: false, blocked: 'running', steps }; }
-  // 2. full backup
+  // 2. full backup (room for it first)
+  const need = PT_sizeOf(port.installDir) + size * 3;
+  const free = freeBytes(backupsDir);
+  if (free != null && free < need) throw new Error(`yedek için yer yok: ${Math.round(free / 1e9 * 10) / 10} GB boş, ${Math.round(need / 1e9 * 10) / 10} GB gerekli`);
   const bdir = backup(port, { backupsDir, stamp, version: result.installed, copyTree });
   step('backup', bdir);
   const prot = protectedBy(port.protect);
