@@ -135,7 +135,7 @@ module.exports = ({ app, getWin, FILES, readJson, getPhase }) => {
   async function hungCase() {
     F.reset('auto');
     const lf = `${D}/h/last_run.log`;
-    setGame('kiyi-kasabasi', { args: `12 log=${lf} mode=stall`, loadProgress: { log: lf, ready: 'presenter ready', stallMs: 60000 } });
+    setGame('kiyi-kasabasi', { args: `40 log=${lf} mode=stall`, loadProgress: { log: lf, ready: 'presenter ready', stallMs: 60000 } });  // lives longer than HUNG_MS + notice
     const p = run('kiyi-kasabasi', lf);
     await waitFor(async () => (await F.snap(0, [])).pids.length > 0, 5000);
     await sleep(1500);
@@ -144,7 +144,9 @@ module.exports = ({ app, getWin, FILES, readJson, getPhase }) => {
     const warned = seen.find((x) => /yanıt vermiyor/.test(x[4] || ''));
     const playingAt = seen.find((x) => x[1] === 'playing');
     check('hung: "not responding" on the launch screen', !!warned, warned && warned[4]);
-    check('hung: revealed a few seconds after it stopped responding', !!playingAt && t0 + playingAt[0] - hungAt < 9000, playingAt && `${t0 + playingAt[0] - hungAt} ms after`);
+    // main.js: HUNG_MS of no response (checked about once a second), then LOAD_NOTICE_MS of notice.
+    const hungLimit = (Number(process.env.PS5MENU_HUNG_MS) || 10e3) + (Number(process.env.PS5MENU_LOAD_NOTICE_MS) || 2500) + 2500;
+    check('hung: revealed a few seconds after it stopped responding', !!playingAt && t0 + playingAt[0] - hungAt < hungLimit, playingAt && `${t0 + playingAt[0] - hungAt} ms after`);
     F.hung.clear(); await F.term((await F.snap(0, [])).pids); await waitExit();
   }
 

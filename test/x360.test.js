@@ -79,9 +79,9 @@ ok('x360: grid moves spatially', () => {
   ({ s } = runX(s, ['right', 'right'])); assert.equal(NAVX.focusOf(s, panels), 8);
   ({ s } = runX(s, ['up'])); assert.equal(NAVX.focusOf(s, panels), 5);
 });
-ok('x360: up at the top edge and down at the bottom edge hand over to the console switch', () => {
-  let r = runX(start(), ['up']); assert.deepEqual(r.fx.pop(), { type: 'console', dir: 'up' }); assert.equal(NAVX.focusOf(r.s, panels), 3);
-  r = runX(start(), ['down', 'down']); assert.deepEqual(r.fx.pop(), { type: 'console', dir: 'down' });
+ok('x360: up at the top edge and down at the bottom edge just bump (switch is L3/R3)', () => {
+  let r = runX(start(), ['up']); assert.deepEqual(r.fx.pop(), { type: 'bump' }); assert.equal(NAVX.focusOf(r.s, panels), 3);
+  r = runX(start(), ['down', 'down']); assert.deepEqual(r.fx.pop(), { type: 'bump' });
 });
 ok('x360: leaving sideways changes panel, back returns home', () => {
   let { s, fx } = runX(start(), ['left', 'left']); assert.equal(s.panel, 0); assert.equal(fx.pop().type, 'panel');
@@ -90,5 +90,29 @@ ok('x360: leaving sideways changes panel, back returns home', () => {
   const r = runX(s, ['right']); assert.equal(r.s.panel, 2); assert.equal(r.fx.pop().type, 'bump');
 });
 ok('x360: A activates the focused tile', () => { const r = runX(start(), ['select']); assert.deepEqual(r.fx.pop(), { type: 'activate', panel: 1, index: 3 }); });
+
+const INPUT = require('../app/renderer/input.js');
+const padRun = (steps) => { const m = new INPUT.PadMapper(); const out = []; let t = 0;
+  for (const [dt, b, ax] of steps) { t += dt; const buttons = Array.from({ length: 17 }, (_, i) => ({ pressed: b.includes(i) })); out.push(...m.update(buttons, ax || [0, 0, 0, 0], t)); } return out; };
+ok('pad: L3 click = previous console, R3 click = next console (on release)', () => {
+  assert.deepEqual(padRun([[16, [10]], [16, [10]], [16, []]]), ['consolePrev']);
+  assert.deepEqual(padRun([[16, [11]], [16, []]]), ['consoleNext']);
+  assert.deepEqual(padRun([[16, [11]], [16, [11]]]), [], 'nothing while still held');
+});
+ok('pad: L3 while steering, or held long, does not switch', () => {
+  const r = padRun([[16, [10], [0.9, 0, 0, 0]], [16, [10], [0.9, 0, 0, 0]], [16, [], [0, 0, 0, 0]]]);
+  assert.ok(!r.includes('consolePrev')); assert.ok(r.includes('right'), 'the stick still navigates');
+  assert.deepEqual(padRun([[16, [10]], [900, [10]], [16, []]]), []);
+  assert.deepEqual(padRun([[16, [11], [0, 0, 0.8, 0]], [16, []]]), [], 'R3 with the right stick moved');
+});
+ok('pad: up/down, X and Y map as in 1.3', () => {
+  assert.deepEqual(padRun([[16, [12]], [16, []], [16, [13]], [16, []], [16, [2]], [16, []], [16, [3]]]), ['up', 'down', 'x', 'y']);
+});
+ok('keyboard: PageUp/PageDown switch, no X/Y letter keys, nothing else changed', () => {
+  const k = (key, o = {}) => INPUT.keyAction({ key, ...o });
+  assert.equal(k('PageUp'), 'consolePrev'); assert.equal(k('PageDown'), 'consoleNext');
+  assert.equal(k('x'), null); assert.equal(k('y'), null); assert.equal(k('PageDown', { ctrlKey: true }), null);
+  for (const [key, a] of [['ArrowUp', 'up'], ['ArrowDown', 'down'], ['Enter', 'select'], ['Escape', 'back'], ['Tab', 'tabToggle'], ['q', 'tabPrev'], ['e', 'tabNext'], ['o', 'options'], ['h', 'home']]) assert.equal(k(key), a);
+});
 
 console.log(`${n} x360 tests passed`);

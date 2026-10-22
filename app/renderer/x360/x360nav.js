@@ -2,7 +2,7 @@
 // A dashboard is a row of panels (one per tab). Each panel holds tiles with a rectangle in
 // 1920x1080 units, relative to the panel's left edge. The focus moves spatially between tiles;
 // leaving a panel sideways goes to the neighbouring panel, leaving the grid at the top or the
-// bottom hands control back to the console switcher (fx 'console').
+// bottom just bumps (the console menus are switched with L3 / R3).
 (function (root) {
   const center = (r) => ({ x: r.x + r.w / 2, y: r.y + r.h / 2 });
 
@@ -87,7 +87,7 @@
       case 'up': case 'down': {
         const k = cur >= 0 ? spatial(tiles, cur, a) : -1;
         if (k >= 0) { n.focus[s.panel] = k; fx.push({ type: 'focus' }); }
-        else fx.push({ type: 'console', dir: a });
+        else fx.push({ type: 'bump' });
         break;
       }
       case 'tabPrev': goPanel(s.panel - 1, null); break;

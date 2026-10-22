@@ -1,6 +1,6 @@
 // Loaded by main.js when PS5MENU_SELFTEST points here (root: test/root-x360).
-// Drives the console switch PS5 <-> Xbox 360 with up and with down, rapid presses and held-key
-// repeats, checks the frame pacing of the switch animation, the remembered menu, and that A on
+// Up/down navigate as in 1.3; the console switch PS5 <-> Xbox 360 goes with L3/R3 (a fake pad in
+// the page) and PageUp/PageDown (real key events), spam, key repeat, overlay, unplugged pad; checks the frame pacing of the switch animation, the remembered menu, and that A on
 // the Naruto tile in the Xbox 360 menu starts the right exe.
 const fs = require('fs');
 module.exports = ({ app, win, runner, FILES, readJson }) => {
@@ -23,13 +23,25 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
       const ps5ids = await js('window.__ps5.items.filter((x) => x.kind === "game").map((x) => x.g.id).join(",")');
       check('PS5 row has only PlayStation/PC games', ps5ids === 'ornek-oyun,gece-surusu,kiyi-kasabasi' || (!ps5ids.includes('naruto') && ps5ids.split(',').length === 3), ps5ids);
 
+      // 1.4.1: up/down navigate exactly as in 1.3 (no switch); the menus switch with L3 / R3 on the
+      // pad and PageUp / PageDown on the keyboard.
+      await press('down'); await sleep(250); s = await state();
+      check('down on the PS5 row moves to the actions (1.3), no switch', s.c === 'ps5' && s.zone === 'actions' && s.n === 0, JSON.stringify(s));
+      await press('up'); await sleep(250); await press('up'); await sleep(250); s = await state();
+      check('up from the row goes to the top bar (1.3), no switch', s.c === 'ps5' && s.zone === 'top' && s.n === 0, JSON.stringify(s));
+      await press('down'); await sleep(250); s = await state();
+      check('down from the top bar back to the row', s.zone === 'row', s.zone);
+
       // Frame pacing during the switch: collect rAF deltas in the page.
       await js('window.__fr = []; (function f(t) { if (window.__fr.length < 200) { window.__fr.push(t); requestAnimationFrame(f); } })(performance.now())');
-      await press('down');
+      await press('consoleNext');
       s = await state();
-      check('down on the PS5 row starts the switch', s.sw === true && s.c === 'x360', JSON.stringify(s));
+      check('R3 / PageDown starts the switch', s.sw === true && s.c === 'x360', JSON.stringify(s));
       const mid = await vis();
       check('both menus are on screen during the animation', mid.x && mid.p, JSON.stringify(mid));
+      await sleep(120);
+      const ty = await js(`(() => { const m = getComputedStyle(document.querySelector('#x360')).transform; return m === 'none' ? 0 : Number(m.replace(/[^0-9.,eE-]/g, '').split(',')[5]); })()`);
+      check('next: the new menu comes up from below', ty > 0, ty);
       await settle();
       const fr = await js('window.__fr.slice()');
       const d = fr.slice(1).map((t, i) => t - fr[i]).filter((x) => x > 0).slice(0, 40);
@@ -42,34 +54,78 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
       await sleep(400);
       check('last menu is saved (state.console = x360)', readJson(FILES.state, {}).console === 'x360', JSON.stringify(readJson(FILES.state, {}).console));
 
-      // X360 -> PS5 with up (featured tile is on the top row: up leaves the grid)
-      await press('up'); await settle(); s = await state(); v = await vis();
-      check('up at the top of the X360 grid goes back to PS5', s.c === 'ps5' && v.p && !v.x, JSON.stringify(s));
-      check('PS5 row focus kept after the round trip', s.zone === 'row', s.zone);
-      // PS5 -> X360 with up
-      await sleep(250); await press('up'); await settle(); s = await state();
-      check('up on the PS5 row also switches to X360', s.c === 'x360', s.c);
-      // X360 -> PS5 with down: first down moves inside the grid, the next one leaves it
-      await sleep(250); await press('down'); await sleep(250); s = await state();
-      check('down inside the X360 grid moves focus, no switch', s.c === 'x360' && s.x !== 'naruto-rise-of-a-ninja', s.x);
-      await press('down'); await settle(); s = await state();
-      check('down at the bottom of the X360 grid goes back to PS5', s.c === 'ps5', s.c);
-
-      // Rapid presses: 8 downs 40 ms apart -> exactly one switch
-      await sleep(300);
+      // Up/down inside the X360 grid never leave the menu
       let n0 = (await state()).n;
-      for (let i = 0; i < 8; i++) { await press('down'); await sleep(40); }
-      await settle(); s = await state();
-      check('rapid presses: one switch only', s.n - n0 === 1 && s.c === 'x360', `switches ${s.n - n0}, console ${s.c}`);
-      // Held key: first press, then pad repeats at 400 ms and every 120 ms -> no second switch
-      await sleep(300); await press('up'); await settle(); s = await state(); // back to ps5 by up from featured? focus may be elsewhere
-      if (s.c !== 'ps5') { for (let i = 0; i < 4 && (await state()).c !== 'ps5'; i++) { await sleep(250); await press('up'); await settle(); } }
-      s = await state(); check('back on PS5 before the hold test', s.c === 'ps5', s.c);
+      for (const k of ['up', 'up', 'up', 'down', 'down', 'down', 'down', 'down']) { await press(k); await sleep(120); }
+      s = await state();
+      check('up/down at the X360 grid edges do not switch', s.c === 'x360' && s.n === n0, JSON.stringify(s));
+      await press('back'); await sleep(300); if ((await state()).x !== 'naruto-rise-of-a-ninja') { await press('back'); await sleep(300); }
+
+      // L3 / PageUp: previous menu (with two menus: the other one), the new menu comes from above
+      await press('consolePrev'); await sleep(120);
+      const ty2 = await js(`(() => { const m = getComputedStyle(document.querySelector('#x360')).transform; return m === 'none' ? 0 : Number(m.replace(/[^0-9.,eE-]/g, '').split(',')[5]); })()`);
+      check('prev: the outgoing X360 menu moves down (new one from above)', ty2 > 0, ty2);
+      await settle(); s = await state(); v = await vis();
+      check('L3 goes back to PS5', s.c === 'ps5' && v.p && !v.x, JSON.stringify(s));
+      check('PS5 row focus kept after the round trip', s.zone === 'row', s.zone);
+      await sleep(250); await press('consolePrev'); await settle(); s = await state();
+      check('L3 on PS5 also goes to X360 (two menus)', s.c === 'x360', s.c);
+      await sleep(250); await press('consoleNext'); await settle(); s = await state();
+      check('R3 on X360 goes to PS5', s.c === 'ps5', s.c);
+
+      // Spam: 8 presses 40 ms apart -> exactly one switch
       await sleep(300); n0 = (await state()).n;
-      const t0 = Date.now(); await press('down'); await sleep(400);
-      while (Date.now() - t0 < 1600) { await press('down'); await sleep(120); }
+      for (let i = 0; i < 8; i++) { await press(i % 2 ? 'consolePrev' : 'consoleNext'); await sleep(40); }
       await settle(); s = await state();
-      check('held down key: a single switch, repeats ignored', s.n - n0 === 1 && s.c === 'x360', `switches ${s.n - n0}, console ${s.c}`);
+      check('L3/R3 spam: one switch only', s.n - n0 === 1 && s.c === 'x360', `switches ${s.n - n0}, console ${s.c}`);
+      await sleep(300); await press('consoleNext'); await settle();
+
+      // Real keyboard: PageDown switches, a held PageDown (key repeat) does not switch again
+      await sleep(300); n0 = (await state()).n;
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'PageDown' });
+      for (let i = 0; i < 12; i++) { await sleep(60); win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'PageDown', modifiers: ['isAutoRepeat'] }); }
+      win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'PageDown' });
+      await settle(); await sleep(300); s = await state();
+      check('held PageDown: a single switch', s.n - n0 === 1 && s.c === 'x360', `switches ${s.n - n0}, console ${s.c}`);
+      win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'PageUp' }); win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'PageUp' });
+      await settle(); await sleep(300); s = await state();
+      check('PageUp switches back', s.c === 'ps5', s.c);
+
+      // Not while an overlay is open
+      await press('options'); await waitFor(async () => (await js('window.__ps5.overlays')) > 0, 2000);
+      const ov = await js('window.__ps5.overlays');
+      n0 = (await state()).n; await press('consoleNext'); await sleep(300); s = await state();
+      check('no switch while an overlay is open', ov > 0 && s.n === n0 && s.c === 'ps5', `overlays ${ov}, switches ${s.n - n0} ${JSON.stringify(s)} ${await js('JSON.stringify(window.__ps5.items.map((x) => x.kind))')}`);
+      await press('back'); await waitFor(async () => (await js('window.__ps5.overlays')) === 0, 2000); await sleep(200);
+      check('overlay closed again', (await js('window.__ps5.overlays')) === 0);
+
+      // Pad: a fake controller in the page (navigator.getGamepads) drives the real PadMapper.
+      await js(`(() => { const p = { index: 0, connected: true, buttons: Array.from({ length: 17 }, () => ({ pressed: false, value: 0 })), axes: [0, 0, 0, 0] }; window.__pad = p; navigator.getGamepads = () => [p]; window.__keys = []; window.__padlog = []; window.addEventListener('keydown', (e) => window.__keys.push(e.key), true); })()`);
+      const pad = (code) => js(`(() => { const p = window.__pad; ${code} })()`);
+      const btn = (i, on) => pad(`p.buttons[${i}] = { pressed: ${on}, value: ${on ? 1 : 0} };`);
+      n0 = (await state()).n;
+      await btn(11, true); await sleep(120); await btn(11, false); await waitFor(async () => (await state()).n !== n0, 800, 20); await settle(); await sleep(200); s = await state();
+      check('pad R3 click switches', s.n - n0 === 1 && s.c === 'x360', `switches ${s.n - n0}, console ${s.c}`);
+      await sleep(300); n0 = (await state()).n;
+      // L3 pressed while steering the left stick: navigation, not a switch
+      await btn(10, true); await pad('p.axes[0] = 0.9;'); await sleep(200); await pad('p.axes[0] = 0;'); await btn(10, false); await sleep(400); s = await state();
+      check('L3 while moving the stick: no switch', s.n === n0 && s.c === 'x360', `switches ${s.n - n0}`);
+      // A long L3 hold: no switch
+      await btn(10, true); await sleep(1100); await btn(10, false); await sleep(400); s = await state();
+      check('long L3 hold: no switch', s.n === n0, `switches ${s.n - n0}`);
+      // L3 click: switch back
+      await btn(10, true); await sleep(100); await btn(10, false); await waitFor(async () => (await state()).n !== n0, 800, 20); await settle(); await sleep(400); s = await state();
+      check('pad L3 click switches back', s.n - n0 === 1 && s.c === 'ps5', `switches ${s.n - n0}, console ${s.c}`);
+      // Keyboard and pad at once: PageDown + R3 in the same moment -> one switch
+      await sleep(300); n0 = (await state()).n;
+      await btn(11, true); win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'PageDown' }); win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'PageDown' }); await sleep(60); await btn(11, false);
+      await waitFor(async () => (await state()).n !== n0, 800, 20); await settle(); await sleep(300); s = await state();
+      check('keyboard + pad together: one switch', s.n - n0 === 1 && s.c === 'x360', `switches ${s.n - n0}, console ${s.c} ${await js(`JSON.stringify({ k: window.__keys, ov: window.__ps5.overlays, l: document.querySelector('#launch').className, b: window.__ps5.boot, focus: document.hasFocus(), g: window.__ps5.guardInfo, now: Math.round(performance.now()) })`)}`);
+      // Unplug while R3 is down, plug back in: no ghost switch
+      n0 = (await state()).n;
+      await btn(11, true); await sleep(60); await pad('p.connected = false;'); await sleep(200); await btn(11, false); await pad('p.connected = true;'); await sleep(400); s = await state();
+      check('pad unplugged mid-press: no ghost switch on reconnect', s.n === n0, `switches ${s.n - n0}`);
+      await js('delete navigator.getGamepads');
 
       // Launch Naruto from the X360 menu: back/home returns focus to the default tile (Naruto)
       await sleep(300); await press('back'); await sleep(300); s = await state();
@@ -92,8 +148,7 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
       check('dummy game saw the launch', /dummy/i.test(dummy) || dummy.length > 0, dummy);
 
       // Switch back and launch a PS5 game: PS5 behaviour unchanged
-      await press('up'); await settle(); s = await state();
-      if (s.c !== 'ps5') { await sleep(250); await press('up'); await settle(); s = await state(); }
+      await press('consoleNext'); await settle(); s = await state();
       check('back to PS5 for a PS5 launch', s.c === 'ps5', s.c);
       exited = null; runner.once('exited', (g, info) => { exited = { id: g.id, ...info }; });
       const want = await js('window.__ps5.items[window.__ps5.nav.row].id');

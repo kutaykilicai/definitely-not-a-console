@@ -9,6 +9,10 @@
       this.dz = opts.deadzone ?? 0.5; this.dzOff = opts.release ?? 0.35;
       this.prev = {}; this.dirState = {}; this.stick = { x: 0, y: 0 };
       this.comboUsed = false;
+      // Stick presses (L3 / R3) switch the console menu. They count on release, and only when the
+      // stick stayed near the centre while it was down and the press was short: a click that happens
+      // while steering with the stick, or a long hold, is not a request to change menus.
+      this.click = {}; this.clickMax = opts.clickMax ?? 700; this.clickTravel = opts.clickTravel ?? 0.5;
     }
     // buttons: array of booleans/pressed objects; axes: array; returns actions list.
     update(buttons, axes, now) {
@@ -40,6 +44,12 @@
       if (edge(B.GUIDE)) out.push('home');
       if (edge(B.X)) out.push('x');
       if (edge(B.Y)) out.push('y');
+      for (const [btn, ix, iy, act] of [[B.LS, 0, 1, 'consolePrev'], [B.RS, 2, 3, 'consoleNext']]) {
+        const mag = Math.hypot(axes[ix] || 0, axes[iy] || 0);
+        if (edge(btn)) this.click[btn] = { t: now, moved: mag > this.clickTravel };
+        else if (pressed(btn) && this.click[btn] && mag > this.clickTravel) this.click[btn].moved = true;
+        if (release(btn) && this.click[btn]) { const c = this.click[btn]; if (!c.moved && now - c.t <= this.clickMax) out.push(act); delete this.click[btn]; }
+      }
       // View + Menu together = home (fallback when Game Bar/Steam owns the Guide button).
       if (pressed(B.VIEW) && pressed(B.MENU) && (edge(B.VIEW) || edge(B.MENU))) { out.push('home'); this.comboUsed = true; }
       if (release(B.MENU)) { if (!this.comboUsed) out.push('options'); }
@@ -58,7 +68,8 @@
     Tab: 'tabToggle', q: 'tabPrev', Q: 'tabPrev', e: 'tabNext', E: 'tabNext',
     ContextMenu: 'options', o: 'options', O: 'options', F10: 'options',
     Home: 'home', h: 'home', H: 'home',
-    x: 'x', X: 'x', y: 'y', Y: 'y',
+    // Not used anywhere else in the menu: switch to the previous / next console menu.
+    PageUp: 'consolePrev', PageDown: 'consoleNext',
   };
   function keyAction(ev) {
     if (ev.altKey || ev.ctrlKey || ev.metaKey) return null;

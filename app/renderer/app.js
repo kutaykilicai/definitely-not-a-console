@@ -26,11 +26,10 @@
   let escGuard = REOPEN === 'home' ? performance.now() + 1500 : 0;
   const timers = {};
   let lastMouse = 0; let moveTimes = [];
-  // Console menus: 'ps5' (this file's home screen) or 'x360' (renderer/x360). Up/down on the PS5
-  // game row (and at the top/bottom edge of the Xbox 360 grid) switches between them.
+  // Console menus: 'ps5' (this file's home screen) or 'x360' (renderer/x360). L3 / R3 on the pad
+  // (PageUp / PageDown on the keyboard) switch between them; up/down navigate as before.
   let consoleId = 'ps5';
   let switching = false;
-  let freshVertical = true;
   const guard = new CONS.SwitchGuard();
   let xdash = null;
   // Console boot intros (boot.js): once per app start for each console menu, never after a game.
@@ -674,7 +673,6 @@
     xdash = new X360.Dash({
       el: $('#x360'), t, api, sound: SOUND, glyphMode: () => inputMode, lang: () => (data.settings.language === 'en' ? 'en' : 'tr'),
       running: () => running,
-      onConsole: (dir) => { if (freshVertical) switchConsole(dir); },
       action: x360Action,
     });
     return xdash;
@@ -712,8 +710,8 @@
   }
   function switchConsole(dir, target) {
     const to = target || CONS.neighbour(consoleId, dir);
-    if (switching || to === consoleId) return;
     const now = performance.now();
+    if (switching || to === consoleId) return;
     if (guard.busy(now)) return;
     if (bootWanted(to)) { bootSwitch(to); return; }
     switching = true; guard.start(now, SWITCH_MS);
@@ -744,25 +742,23 @@
 
   function dispatch(a) {
     if (!data) return;
-    // During a boot intro: A/Enter (and the other buttons) skip it, directions are swallowed. A held
-    // up/down still counts for the switch guard, so its key repeat cannot switch again afterwards.
+    // During a boot intro: A/Enter (and the other buttons) skip it; directions and the console
+    // switch (L3/R3, PageUp/PageDown) are swallowed.
     if (bootP.on) {
-      if (a === 'up' || a === 'down') guard.press(performance.now());
-      else if (['select', 'back', 'home', 'options', 'any', 'x', 'y'].includes(a)) bootP.skip();
+      if (['select', 'back', 'home', 'options', 'any', 'x', 'y'].includes(a)) bootP.skip();
       return;
     }
     if ($('#intro').classList.contains('on')) { if (['select', 'home', 'back', 'options'].includes(a) || a === 'any') dismissIntro(); return; }
     if (a === 'home') { closeAll(); }
+    // Console switch: L3 / PageUp = previous menu, R3 / PageDown = next one. Not while a dialog or
+    // overlay is open, during a switch, or while a game is being started.
+    if (a === 'consolePrev' || a === 'consoleNext') {
+      if (!overlays.length && !launching && !$('#launch').classList.contains('on')) switchConsole(a === 'consolePrev' ? 'up' : 'down');
+      return;
+    }
     if (overlays.length) { overlays[overlays.length - 1].input(a); return; }
-    if (a === 'up' || a === 'down') freshVertical = guard.press(performance.now());
     if (switching) return;
     if (consoleId === 'x360') { ensureX360().input(a); return; }
-    // PS5 home: up/down on the game row switches to the next console menu. The top bar and the
-    // Play/"…"/cards area stay reachable with Y (top bar) and X (Play button), and as before
-    // with the mouse; inside those areas up/down keep their old meaning.
-    if (nav.zone === 'row' && (a === 'up' || a === 'down')) { if (freshVertical) switchConsole(a); return; }
-    if (nav.zone === 'row' && a === 'y') { nav.zone = 'top'; nav.top = nav.tab === 'games' ? 0 : 1; SOUND.play('focus'); applyZone(); return; }
-    if (nav.zone === 'row' && a === 'x' && items.length) { nav.zone = 'actions'; nav.action = 0; SOUND.play('focus'); applyZone(); return; }
     const ctx = { rowLen: items.length, kind: (i) => (items[i] ? items[i].kind : 'game'), cardsLen: 3 };
     const prevZone = nav.zone;
     const { state, fx } = NAV.reduce(nav, a, ctx);
@@ -807,6 +803,8 @@
     if (e.key === 'Escape' && escGuard && (e.repeat || performance.now() < escGuard)) { e.preventDefault(); return; }
     if (e.target && e.target.tagName === 'INPUT') return;   // text fields handle their own keys
     const a = INPUT.keyAction(e);
+    // A held PageUp/PageDown must not switch again and again with the key repeat.
+    if ((a === 'consolePrev' || a === 'consoleNext') && e.repeat) { e.preventDefault(); return; }
     if (a) { e.preventDefault(); setMode('keyboard'); document.body.classList.add('nocursor'); dispatch(a); }
     else if ($('#intro').classList.contains('on')) dismissIntro();
   });
@@ -814,6 +812,8 @@
   function pollPads() {
     const pads = navigator.getGamepads ? navigator.getGamepads() : [];
     const now = performance.now();
+    // A pad that was unplugged starts from a clean state when it comes back (no stale held buttons).
+    for (const k of Object.keys(mappers)) if (![...pads].some((p) => p && p.connected && String(p.index) === k)) delete mappers[k];
     for (const p of pads) {
       if (!p || !p.connected) continue;
       const m = mappers[p.index] || (mappers[p.index] = new INPUT.PadMapper());
@@ -980,7 +980,7 @@
       try { await api.capture(); } finally { api.captureDone(); }
     }
     window.__ps5 = { dispatch, get nav() { return nav; }, get items() { return items; }, get overlays() { return overlays.length; },
-      get console() { return consoleId; }, get boot() { return bootP.on ? bootP.active.kind : null; }, skipBoot: () => bootP.skip(), get switching() { return switching; }, get x360() { return xdash && xdash.current(); },
+      get console() { return consoleId; }, get boot() { return bootP.on ? bootP.active.kind : null; }, skipBoot: () => bootP.skip(), get switching() { return switching; }, get guardInfo() { return { switching, launching, busyMs: Math.round(guard.busyUntil - performance.now()), consoleId }; }, get x360() { return xdash && xdash.current(); },
       launchScreen: (mode, id) => launchScreen(mode, data.games.find((g) => g.id === id)) };
   }
   main().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<pre style="position:fixed;left:20px;top:20px;color:#f88;z-index:99;font:16px monospace;white-space:pre-wrap">${esc(e.stack || e)}</pre>`); });

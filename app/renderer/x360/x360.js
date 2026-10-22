@@ -275,7 +275,7 @@
         if (f.type === 'focus') { this.o.sound.play('focus'); this.layout(false); }
         else if (f.type === 'panel') { this.o.sound.play('focus'); this.layout(false); }
         else if (f.type === 'bump') this.o.sound.play('bump');
-        else if (f.type === 'console') this.o.onConsole(f.dir);
+        else if (f.type === 'console' && this.o.onConsole) this.o.onConsole(f.dir);
         else if (f.type === 'home') this.layout(false);
         else if (f.type === 'activate') { const t = this.panels[f.panel].tiles[f.index]; if (t) this.o.action(t.kind, t); }
         else if (f.type === 'menu') { const t = this.panels[f.panel].tiles[f.index]; if (t && t.kind === 'game') this.o.action('menu', t); }

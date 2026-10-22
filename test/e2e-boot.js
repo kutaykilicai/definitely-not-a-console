@@ -29,8 +29,8 @@ module.exports = ({ win, runner }) => {
         s = await st();
         check('PS5: the user video plays (1080p) from the trim start', s.v && s.v.w === 1920 && s.v.t >= 1.0 && !s.v.paused, JSON.stringify(s.v));
       }
-      await press('down'); await press('up'); await sleep(150); s = await st();
-      check('up/down during the intro are swallowed (no switch)', s.c === 'ps5' && s.b === 'ps5' && s.n === 0, JSON.stringify(s));
+      for (const k of ['down', 'up', 'consoleNext', 'consolePrev', 'left', 'tabNext']) await press(k); await sleep(150); s = await st();
+      check('directions and L3/R3 during the intro are swallowed (no switch)', s.c === 'ps5' && s.b === 'ps5' && s.n === 0, JSON.stringify(s));
       if (MODE === 'video') {
         // Let the PS5 video run to its trim end and watch the fade into the home screen.
         await waitFor(async () => { const x = await st(); return x.v && x.v.t > 13.3; }, 16000, 100);
@@ -51,15 +51,15 @@ module.exports = ({ win, runner }) => {
 
       // First switch to the Xbox 360 menu: its boot intro covers the switch.
       const pre = MODE === 'video' ? Math.round(await luma()) : 0;
-      await press('down');
+      await press('consoleNext');
       if (MODE === 'video') {
         const tr = await lumaTrace(900); info.x360In = [pre, ...tr];
         const lo = Math.min(...tr.map((x) => x[1]));
         check('menu fades into the X360 video without a dark dip', lo >= pre - 3, `menu ${pre}, min ${lo}, end ${tr[tr.length - 1][1]}`);
       }
-      check('first down: X360 boot intro starts', await waitFor(async () => (await st()).b === 'x360', 1500), '');
+      check('first R3: X360 boot intro starts', await waitFor(async () => (await st()).b === 'x360', 1500), '');
       check('menu switched to X360 under the intro', await waitFor(async () => (await st()).c === 'x360', 3500), JSON.stringify(await st()));
-      for (let i = 0; i < 6; i++) { await press(i % 2 ? 'up' : 'down'); await sleep(40); }
+      for (let i = 0; i < 6; i++) { await press(i % 2 ? 'consolePrev' : 'consoleNext'); await sleep(40); }
       s = await st();
       check('switch input during the X360 intro is swallowed', s.c === 'x360' && s.b === 'x360' && s.n === 1, JSON.stringify(s));
       if (MODE === 'video') {
@@ -80,10 +80,10 @@ module.exports = ({ win, runner }) => {
 
       // Later switches: no intro, the normal slide.
       await sleep(300);
-      await press('up'); await sleep(60); s = await st();
+      await press('consolePrev'); await sleep(60); s = await st();
       check('second switch (to PS5): no intro, normal animation', !s.b && s.sw && s.c === 'ps5', JSON.stringify(s));
       await waitFor(async () => !(await st()).sw, 2000); await sleep(300);
-      await press('down'); await sleep(60); s = await st();
+      await press('consoleNext'); await sleep(60); s = await st();
       check('third switch (to X360): no intro', !s.b && s.c === 'x360', JSON.stringify(s));
       await waitFor(async () => !(await st()).sw, 2000);
 
