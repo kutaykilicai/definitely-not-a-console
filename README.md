@@ -163,12 +163,15 @@ Bazı oyunlar önce kısa ömürlü bir başlatıcı açar. Menü normalde asıl
 **Oyun kapağı bulanık ya da yok.**
 Görsel satırından kare bir kapak (en az 512x512) ve 16:9 bir arka plan seçebilirsin.
 
+**Menü açılınca oyun listem boş, klasörde `.bozuk-` ile biten bir dosya var.**
+`games.json`, `settings.json` ya da `state.json` okunamayacak durumdaysa (yarım kalmış, elle düzenlenip bozulmuş) menü dosyayı `<ad>.bozuk-<tarih>` adıyla yanına kopyalar ve varsayılanlarla açılır. Listen o kopyanın içindedir; düzeltip eski adıyla geri koyabilirsin.
+
 **Kumandam çalışmıyor.**
 Menü, Windows'un Xbox kumandası desteğini kullanır. Kumanda başka bir oyunda çalışıyorsa menüde de çalışır; Steam açıksa Steam Input'un kumandayı yakalamadığından emin ol.
 
 ## Geliştirme
 
-Uygulama Electron ile yazıldı. Oyun pencerelerini izleyen küçük yardımcı program `native/ps5winhelper.c` içinde, mingw ile derlenir. Testler `node test/unit.test.js`, `node test/winwatch.test.js`, `node test/homeflow.test.js` `node test/loadprogress.test.js` ve `node test/x360.test.js` ile çalışır; intro akışı `tools/x360/boot_e2e.sh synth|logo|video` ile Xvfb altında uçtan uca denenir; yardımcının basılı tutma mantığı `gcc native/hold_test.c` ile ayrıca denenir, geçişlerde ekrana başka bir pencere sızmadığı Linux üzerinde gerçek pencerelerle kaydedilip kare kare `tools/frame_test.sh` ile denetlenir (`tools/frame_test.sh <klasör> progress` yükleme ilerlemesini dener) (Xvfb, ffmpeg, ffplay, xdotool gerekir), kurulum dosyaları `node tools/build.js` ile `dist/` klasörüne çıkar.
+Uygulama Electron ile yazıldı. Oyun pencerelerini izleyen küçük yardımcı program `native/ps5winhelper.c` içinde, mingw ile derlenir. Testler `node test/unit.test.js`, `node test/winwatch.test.js`, `node test/homeflow.test.js` `node test/loadprogress.test.js` ve `node test/x360.test.js` ile çalışır; intro akışı `tools/x360/boot_e2e.sh synth|logo|video` ile Xvfb altında uçtan uca denenir; yardımcının basılı tutma mantığı `gcc native/hold_test.c` ile ayrıca denenir, geçişlerde ekrana başka bir pencere sızmadığı Linux üzerinde gerçek pencerelerle kaydedilip kare kare `tools/frame_test.sh` ile denetlenir (`tools/frame_test.sh <klasör> progress` yükleme ilerlemesini dener) (Xvfb, ffmpeg, ffplay, xdotool gerekir), kurulum dosyaları `node tools/build.js` ile `dist/` klasörüne çıkar. `tools/e2e_all.sh` bütün testleri Xvfb altında sırayla çalıştırır (bozuk dosyalar, Türkçe karakterli yollar, çok oyun, intro sırasında Alt+F4 dahil); `tools/navparity.sh` PS5 gezinmesini 1.3 ile adım adım, `tools/ps5_parity.sh` PS5 ekranlarını piksel piksel karşılaştırır, `tools/dpi_check.sh` farklı çözünürlük ve ölçeklerde ekranları dener; uzun denemeler `tools/e2e_all.sh qa-soak` (500 geçiş) ve `QA_SEED=1 tools/e2e_all.sh qa-fuzz` (rastgele girdi).
 
 ```
 cd app && npm install && npx electron . --windowed
