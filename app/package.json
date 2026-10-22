@@ -1,7 +1,7 @@
 {
   "name": "definitely-not-ps5-menu",
   "productName": "Definitely Not PS5 Menu",
-  "version": "1.4.0",
+  "version": "1.4.1",
   "description": "Windows için PS5 ana ekranına benzeyen bir oyun başlatıcı. Resmi değildir.",
   "main": "main.js",
   "author": "Kutay Kılıç <vodkakutay@gmail.com>",
