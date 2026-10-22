@@ -50,6 +50,10 @@
     const z = window.innerHeight / 1080;
     stage.style.zoom = z;
     stage.style.width = `${Math.max(1920 * 0.75, window.innerWidth / z)}px`;
+    // The Xbox 360 dashboard is drawn for 16:9; on other shapes its frame is centred in what is
+    // visible (x360.css). 0 on 16:9, so nothing moves there.
+    const vis = window.innerWidth / z, w = Math.max(1920 * 0.75, vis), xo = (Math.min(w, vis) - 1920) / 2;
+    stage.style.setProperty('--xo', `${xo}px`); stage.style.setProperty('--xr', `${Math.max(xo, -96) + (w - vis)}px`); stage.style.setProperty('--xvis', `${vis}`);
   }
   window.addEventListener('resize', () => { fit(); layoutRow(); });
   fit();

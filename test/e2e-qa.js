@@ -89,6 +89,24 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
           await press('tabNext'); await sleep(200);
           const lib = await js('(() => { const d = window.__ps5.xdash; const p = d.panels.find((q) => q.id === "games" || q.id === "oyunlar"); return p ? p.tiles.length : -1; })()');
           check('the games panel lists them', lib !== 0, lib);
+          // walk deep into the games panel: the focused tile must stay on screen
+          await js('(() => { const d = window.__ps5.xdash; d.nav.panel = d.panels.findIndex((p) => p.id === "games"); d.nav.focus[d.nav.panel] = 0; d.layout(true); })()');
+          await sleep(300);
+          const vis = () => js('(() => { const f = document.querySelector("#x360 .x-panel.cur .x-tile.focus"); if (!f) return null; const r = f.getBoundingClientRect(); return { l: Math.round(r.left), r: Math.round(r.right), t: Math.round(r.top), b: Math.round(r.bottom), w: innerWidth, h: innerHeight, k: f.dataset.k }; })()');
+          const curK = () => js('(() => { const d = window.__ps5.xdash; return d.panels[d.nav.panel].id + ":" + d.focusIndex(); })()');
+          const t0 = Date.now(); for (let i = 0; i < 60; i++) { await press('right'); await sleep(8); } info.right60Ms = Date.now() - t0;
+          await sleep(700); let v = await vis(); info.deep = v; info.deepK = await curK();
+          check('60 x right in the games panel: column 60, focused tile on screen', info.deepK === 'games:180' && v && v.l >= 0 && v.r <= v.w && v.t >= 0 && v.b <= v.h, `${info.deepK} ${JSON.stringify(v)}`);
+          for (let i = 0; i < 39; i++) { await press('right'); await sleep(8); } await press('down'); await press('down'); await sleep(700); v = await vis(); info.endK = await curK();
+          check('last column: last game reachable and on screen', info.endK === 'games:299' && v && v.l >= 0 && v.r <= v.w, `${info.endK} ${JSON.stringify(v)}`);
+          await press('right'); await sleep(700); v = await vis(); info.addK = await curK();
+          check('then "add" (or the next panel) is on screen', v && v.l >= 0 && v.r <= v.w, `${info.addK} ${JSON.stringify(v)}`);
+          await press('left'); await sleep(100);
+          for (let i = 0; i < 99; i++) { await press('left'); await sleep(8); } await sleep(700); v = await vis(); info.backK = await curK();
+          check('all the way back left: first column on screen', /^games:[0-2]$/.test(info.backK) && v && v.l >= 0 && v.r <= v.w, `${info.backK} ${JSON.stringify(v)}`);
+          for (let i = 0; i < 3; i++) { await press('down'); await press('up'); } await sleep(500); v = await vis();
+          check('up/down at the end keep a visible focus', v && v.l >= 0 && v.r <= v.w, JSON.stringify(v));
+          await js('(() => { const d = window.__ps5.xdash; d.nav.panel = d.panels.findIndex((p) => p.id === "home"); d.layout(true); })()'); await sleep(300);
           const nodes = await js('document.querySelectorAll("#x360 *").length'); info.x360Nodes = nodes;
           check('DOM stays reasonable with 300 games', nodes < 20000, nodes);
         }
@@ -153,7 +171,7 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
       if (MODE === 'soak') {
         const N = Number(process.env.QA_SOAK || 500);
         const dbg = win.webContents.debugger; dbg.attach('1.3');
-        const measure = async () => { await dbg.sendCommand('HeapProfiler.collectGarbage'); await sleep(200); await dbg.sendCommand('HeapProfiler.collectGarbage'); const h = await dbg.sendCommand('Runtime.getHeapUsage'); const c = await dbg.sendCommand('Memory.getDOMCounters'); return { heapMB: +(h.usedSize / 1048576).toFixed(2), nodes: c.nodes, listeners: c.jsEventListeners, docs: c.documents }; };
+        const measure = async () => { await dbg.sendCommand('HeapProfiler.collectGarbage'); await sleep(200); await dbg.sendCommand('HeapProfiler.collectGarbage'); const h = await dbg.sendCommand('Runtime.getHeapUsage'); const c = await dbg.sendCommand('Memory.getDOMCounters'); const dom = await js('document.getElementsByTagName("*").length'); const pm = await js('performance.memory ? performance.memory.usedJSHeapSize : 0'); return { heapMB: +(h.usedSize / 1048576).toFixed(2), pmMB: +(pm / 1048576).toFixed(2), nodes: c.nodes, dom, listeners: c.jsEventListeners, docs: c.documents }; };
         await press('consoleNext'); await settle(); await press('consolePrev'); await settle(); await sleep(500);
         const m0 = await measure(); info.start = m0; info.samples = [];
         const t0 = Date.now(); let n = 0;
@@ -169,7 +187,7 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
         const s = await st();
         check(`${N} switches done, ends on PS5`, n === N && s.c === 'ps5' && s.n >= N, JSON.stringify(s));
         check('heap does not grow (≤ +3 MB after GC)', m1.heapMB - m0.heapMB <= 3, `${m0.heapMB} -> ${m1.heapMB} MB`);
-        check('DOM nodes stable (≤ +2 %)', m1.nodes <= m0.nodes * 1.02 + 50, `${m0.nodes} -> ${m1.nodes}`);
+        check('DOM nodes stable (≤ +2 %)', m1.nodes <= m0.nodes * 1.02 + 50 && m1.dom <= m0.dom * 1.02 + 20, `nodes ${m0.nodes} -> ${m1.nodes}, elements ${m0.dom} -> ${m1.dom}`);
         check('event listeners stable', m1.listeners <= m0.listeners + 20, `${m0.listeners} -> ${m1.listeners}`);
         dbg.detach();
       }

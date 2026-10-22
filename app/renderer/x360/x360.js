@@ -235,7 +235,21 @@
     focusIndex(p = this.nav.panel) { return NAVX.focusOf(this.nav, this.panels, p); }
     layout(instant) {
       const cur = this.nav.panel;
-      const x = HOME_LEFT - this.panelX(cur);
+      // A panel wider than the screen (many games) scrolls with the focus: the focused tile stays
+      // between HOME_LEFT and the right edge of what is visible. Panels that fit never move.
+      this.scroll = this.scroll || {};
+      let sx = this.scroll[cur] || 0;
+      const p0 = this.panels[cur]; const t0 = p0 && p0.tiles[this.focusIndex(cur)];
+      if (t0 && !this.forcedScene) {
+        const cs = getComputedStyle(this.track); const xo = parseFloat(cs.marginLeft) || 0;
+        const vis = parseFloat(cs.getPropertyValue('--xvis')) || 1920;
+        const room = Math.min(1920, vis - xo) - 72 - HOME_LEFT;
+        if (t0.x + t0.w - sx > room) sx = t0.x + t0.w - room;
+        if (t0.x - sx < 0) sx = t0.x;
+        sx = Math.max(0, sx);
+      }
+      this.scroll[cur] = sx;
+      const x = HOME_LEFT - this.panelX(cur) - sx;
       if (instant) this.track.style.transition = 'none';
       this.track.style.transform = `translateX(${x}px)`;
       this.track.querySelectorAll('.x-panel').forEach((pe) => {
@@ -249,7 +263,12 @@
       // keep the selected tab on screen: shift the strip once it would pass x = 1700
       const sel = this.tabsEl.querySelector('.x-tab.sel');
       let shift = 0;
-      if (sel) { const right = sel.offsetLeft + sel.offsetWidth + this.tabsEl.offsetLeft; if (right > 1700) shift = 1700 - right; }
+      if (sel) {
+        // 1700 in the 16:9 frame; the frame is centred on other screen shapes (--xo), and never past what is visible
+        const cs = getComputedStyle(this.tabsEl); const xo = parseFloat(cs.marginLeft) || 0;
+        const vis = parseFloat(cs.getPropertyValue('--xvis')) || 1920; const lim = Math.min(1700 + xo, vis - 60);
+        const right = sel.offsetLeft + sel.offsetWidth + this.tabsEl.offsetLeft; if (right > lim) shift = lim - right;
+      }
       if (instant) this.tabsEl.style.transition = 'none';
       this.tabsEl.style.transform = shift ? `translateX(${shift}px)` : '';
       if (instant) {

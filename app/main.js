@@ -937,7 +937,7 @@ if (!single) app.quit();
 app.on('second-instance', () => homeShortcut());
 
 app.commandLine.appendSwitch('autoplay-policy', 'no-user-gesture-required');
-if (flag('screenshot')) app.commandLine.appendSwitch('force-device-scale-factor', '1');
+if (flag('screenshot')) app.commandLine.appendSwitch('force-device-scale-factor', process.env.PS5MENU_SHOT_DPR || '1'); // tests: render at 125 % / 150 %
 
 app.whenReady().then(() => {
   protocol.handle('ps5file', (req) => {
