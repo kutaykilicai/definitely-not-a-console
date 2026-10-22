@@ -321,6 +321,79 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
           check(`${c}: lists closed`, (await st()).ov === 0, JSON.stringify(await st()));
         }
       }
+      if (MODE === 'updates') {
+        const path = require('path');
+        const PD = '/tmp/qa İndirilenler/Portlar'; const A = path.join(PD, 'Örnek Port'); const PROCS = process.env.PS5MENU_FAKE_PROCS;
+        const rd = (f) => { try { return fs.readFileSync(path.join(A, f), 'utf8'); } catch { return null; } };
+        const shot = async (name) => { if (process.env.QA_SHOT) fs.writeFileSync(`${process.env.QA_SHOT}/${name}.png`, (await win.webContents.capturePage()).toPNG()); };
+        const rows = () => js('[...document.querySelectorAll("#overlay .full:last-child .panel .it")].map((e) => e.textContent)');
+        const pick = async (re) => {
+          const r = await rows(); const k = r.findIndex((x) => re.test(x)); if (k < 0) return false;
+          const cur = await js('[...document.querySelectorAll("#overlay .full:last-child .panel .it")].findIndex((e) => e.classList.contains("focus"))');
+          for (let i = cur; i < k; i++) { await press('down'); await sleep(40); } for (let i = cur; i > k; i--) { await press('up'); await sleep(40); }
+          await press('select'); await sleep(350); return true;
+        };
+        const toastTxt = () => js('(() => { const t = document.querySelector("#toast"); return t.classList.contains("on") ? t.textContent.trim() : ""; })()');
+        const yes = async () => { await press('right'); await sleep(60); await press('select'); };
+        await settle();
+        // background check shortly after start (PS5MENU_UPDATE_DELAY_MS) -> a quiet toast
+        const gotToast = await waitFor(async () => /güncelleme var/i.test(await toastTxt()), 8000, 100);
+        info.toast = await toastTxt();
+        check('background check after start: toast "Örnek Port için güncelleme var: 1.1"', gotToast && /Örnek Port/.test(info.toast) && /1\.1/.test(info.toast), info.toast);
+        await js('document.querySelector("#toast").classList.remove("on")');
+        await js('window.__ps5.openList("settings")'); await sleep(300);
+        const srow = (await rows()).find((r) => /^Güncellemeler/.test(r));
+        check('Ayarlar shows "Güncellemeler · 1 güncelleme"', /1 güncelleme/.test(srow || ''), srow);
+        await pick(/^Güncellemeler/);
+        let r = await rows(); info.list = r;
+        check('Güncellemeler: Örnek Port 1.0 → 1.1 · Güncelleme var', r.some((x) => /^Örnek Port/.test(x) && /1\.0 → 1\.1/.test(x) && /Güncelleme var/.test(x)), r.join(' | '));
+        check('Taze Port (1 day old release): Beklemede, not offered as an update', r.some((x) => /^Taze Port/.test(x) && /Beklemede/.test(x)), r.join(' | '));
+        await shot('ps5_updates');
+        await pick(/^Örnek Port/);
+        r = await rows(); info.port = r;
+        check('port page: installed, latest, notes, Güncelle, Geri al, mode = Sadece bildir', /Kurulu1\.0/.test(r.join('|')) && r.some((x) => /^Güncelle/.test(x)) && r.some((x) => /^Geri alGeri alınacak yedek yok/.test(x)) && r.some((x) => /Sadece bildir/.test(x)) && r.some((x) => /Ses cızırtısı/.test(x)), r.join(' | '));
+        await shot('ps5_update_port');
+        // the game is "running" (its exe in the process list): no update
+        fs.writeFileSync(PROCS, JSON.stringify(['game.exe']));
+        await pick(/^Güncelle$/); await sleep(200); await yes(); await sleep(1200);
+        info.blocked = await toastTxt();
+        check('Güncelle while the game is open: refused, nothing changed', /Oyun açıkken/.test(info.blocked) && rd('Game.exe') === 'exe 1.0', `${info.blocked} | ${rd('Game.exe')}`);
+        fs.writeFileSync(PROCS, '[]');
+        await js('document.querySelector("#toast").classList.remove("on")');
+        await pick(/^Güncelle$/); await sleep(200); await yes();
+        const done = await waitFor(async () => /güncellendi/.test(await toastTxt()), 10000, 100);
+        info.done = await toastTxt();
+        check('Güncelle: installed 1.1, save and ini kept, new file added', done && rd('Game.exe') === 'exe 1.1' && rd('yeni.dll') === 'yeni' && rd('user/saves/slot1.sav') === 'KAYIT' && rd('oyun.ini') === 'ayar=1', `${info.done} | ${rd('Game.exe')} ${rd('user/saves/slot1.sav')} ${rd('oyun.ini')}`);
+        const bdir = path.join(process.env.PS5MENU_ROOT, 'data', 'port-backups', 'ornek');
+        check('full backup kept under data\\port-backups\\ornek', fs.existsSync(bdir) && fs.readdirSync(bdir).length === 1, fs.existsSync(bdir) ? fs.readdirSync(bdir).join(',') : 'none');
+        await sleep(400); r = await rows();
+        check('port page now: Kurulu 1.1, no Güncelle, Geri al offers 1.0', /Kurulu1\.1/.test(r.join('|')) && !r.some((x) => /^Güncelle$/.test(x)) && r.some((x) => /^Geri al1\.0/.test(x)), r.join(' | '));
+        await js('document.querySelector("#toast").classList.remove("on")');
+        await pick(/^Geri al/); await sleep(200); await yes();
+        const rolled = await waitFor(async () => /geri alındı/.test(await toastTxt()), 8000, 100);
+        check('Geri al: back to 1.0, yeni.dll gone, save kept', rolled && rd('Game.exe') === 'exe 1.0' && rd('yeni.dll') === null && rd('user/saves/slot1.sav') === 'KAYIT', `${await toastTxt()} | ${rd('Game.exe')} ${rd('yeni.dll')}`);
+        await pick(/^Kurulum/); await sleep(300);
+        const pj = JSON.parse(fs.readFileSync(path.join(process.env.PS5MENU_ROOT, 'data', 'ports.json'), 'utf8'));
+        check('Kurulum: Otomatik kur saved to ports.json (per game)', pj.ports.find((p) => p.id === 'ornek').mode === 'auto' && pj.ports.find((p) => p.id === 'taze').mode === 'notify');
+        await pick(/^Kurulum/); await sleep(300);
+        await press('back'); await sleep(300);
+        await pick(/^Yeni portlar/); r = await rows(); info.feed = r;
+        check('Yeni portlar: decompilations only, the installed one marked', r.length === 2 && /kurulu/.test(r[0]) && !/kurulu/.test(r[1]), r.join(' | '));
+        await shot('ps5_new_ports');
+        await press('back'); await sleep(250); await press('back'); await sleep(250); await press('back'); await sleep(250);
+        // a game running: the background check does nothing (no network)
+        const ug = await js('window.__ps5.items.find((x) => x.id === "port-a") ? 1 : 0');
+        void ug;
+        const logf = path.join(process.env.PS5MENU_ROOT, 'data', 'logs', 'updates.log');
+        const logTxt = fs.readFileSync(logf, 'utf8'); info.logTail = logTxt.split('\n').slice(-12);
+        check('updates.log has the check, backup, install, verify and rollback steps', /check .*ornek: 1\.0 -> 1\.1 update/.test(logTxt) && /backup/.test(logTxt) && /verified/.test(logTxt) && /restored/.test(logTxt), info.logTail.join('\n'));
+        check('updates.log: Taze Port held by the wait rule', /taze: 2\.0 -> 2\.1 hold \(wait/.test(logTxt));
+        // X360 look of the same screen
+        await press('consoleNext'); await settle(); await sleep(400);
+        await js('window.__ps5.openList("settings")'); await sleep(300); await pick(/^Güncellemeler/); await sleep(300);
+        await shot('x360_updates');
+        check('X360: the same Güncellemeler list', (await rows()).some((x) => /^Örnek Port/.test(x)));
+      }
       if (MODE === 'theme') {
         const mu = () => js('window.__ps5.music');
         const ev = () => js('window.__ps5.musicEvents.map((e) => e[1] + ":" + (e[2] || "")).join(",")');

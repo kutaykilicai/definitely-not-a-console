@@ -2,6 +2,7 @@
 const { contextBridge, ipcRenderer } = require('electron');
 contextBridge.exposeInMainWorld('ps5', {
   init: () => ipcRenderer.invoke('init'),
+  updates: (cmd, id, arg) => ipcRenderer.invoke('updates', cmd, id, arg),
   launch: (id, opts) => ipcRenderer.invoke('launch', id, opts || {}),
   quit: (mode) => ipcRenderer.invoke('quit', mode),
   kill: () => ipcRenderer.invoke('kill'),

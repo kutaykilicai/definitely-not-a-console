@@ -13,6 +13,7 @@ const lossless = require('./lib/lossless');
 const homeflow = require('./lib/homeflow');
 const loadprogress = require('./lib/loadprogress.js');
 const theme = require('./lib/theme');
+const { Updater } = require('./lib/updater');
 
 const isWin = process.platform === 'win32';
 const argv = process.argv.slice(1);
@@ -260,6 +261,15 @@ function mediaResponse(p, range) {
 }
 
 const runner = new GameRunner();
+// Port updates (Ayarlar > Güncellemeler). Tests point it at a fake GitHub; other tests stay offline.
+const robocopy = (src, dst) => { try { require('child_process').execFileSync('robocopy.exe', [src, dst, '/E', '/COPY:DAT', '/DCOPY:T', '/R:1', '/W:1', '/MT:8', '/NFL', '/NDL', '/NJH', '/NJS', '/NP'], { windowsHide: true, stdio: 'ignore' }); } catch (e) { if (!(e.status >= 0 && e.status < 8)) throw new Error(`robocopy ${e.status}`); } };
+const updater = new Updater({
+  dataDir: DATA, games: async () => (await loadGames()).games, busy: () => runner.running,
+  api: process.env.PS5MENU_GH_API || 'https://api.github.com', feedUrl: process.env.PS5MENU_FEED_URL || undefined,
+  net: !!process.env.PS5MENU_GH_API || !(process.env.PS5MENU_SELFTEST || flag('screenshot') || ROOT_ENV),
+  copyTree: isWin ? robocopy : null, log: (...a) => log('[updates]', ...a), onChange: () => send('updates-changed', updater.view()),
+  ...(process.env.PS5MENU_FAKE_PROCS ? { names: async () => new Set(readJson(process.env.PS5MENU_FAKE_PROCS, [])) } : {}),
+});
 let win = null;
 
 // The menu window exists only while the menu is on screen. During a game it is destroyed (nothing
@@ -877,6 +887,10 @@ runner.on('error', (game, e) => { phase = 'home'; session = null; openMenu('exit
 runner.on('exited', (game, info) => {
   state.lastPlayed[game.id] = Date.now();
   state.playSeconds[game.id] = (state.playSeconds[game.id] || 0) + (info.failed ? 0 : info.seconds);
+  if (!info.failed && info.seconds > 0) {
+    // session log for the statistics screen (last 400 sessions)
+    state.sessions = (Array.isArray(state.sessions) ? state.sessions : []).concat([{ id: game.id, end: Date.now(), sec: Math.round(info.seconds) }]).slice(-400);
+  }
   state.focusId = game.id;
   writeJson(FILES.state, state);
   const quiet = session && session.game === game && session.quiet;
@@ -889,6 +903,16 @@ runner.on('exited', (game, info) => {
 
 // IPC
 ipcMain.handle('init', () => buildInit());
+ipcMain.handle('updates', async (_e, cmd, id, arg) => {
+  if (cmd === 'view') { await updater.doc(); return updater.view(); }
+  if (cmd === 'check') return updater.check({ force: true });
+  if (cmd === 'update') return updater.update(id);
+  if (cmd === 'rollback') return updater.rollback(id);
+  if (cmd === 'set') return updater.setPort(id, arg || {});
+  if (cmd === 'add') return updater.addPort(arg || {});
+  if (cmd === 'open') { const r = updater.view().feed.items.find((x) => x.link === id) || updater.view().results.find((x) => x.url === id); if (r) shell.openExternal(id); return !!r; }
+  return null;
+});
 ipcMain.handle('launch', async (_e, id, opts = {}) => {
   const doc = await loadGames();
   const g = doc.games.find((x) => x.id === id);
@@ -1022,6 +1046,7 @@ app.whenReady().then(() => {
   if (process.env.PS5MENU_SELFTEST) require(process.env.PS5MENU_SELFTEST)({ app, win, getWin: () => win, runner, FILES, readJson, getPhase: () => phase, homeShortcut, getSession: () => session });
   // Start the window helper early so the first launch does not wait for it.
   if (seamless()) helper.snap(0, []).catch(() => {});
+  updater.start(Number(process.env.PS5MENU_UPDATE_DELAY_MS) || 45e3);
   // Bring the menu back from anywhere (keyboard). Controller PS button is handled in the renderer.
   try { globalShortcut.register('CommandOrControl+Alt+Home', () => homeShortcut()); } catch { /* */ }
   if (isWin && settings.autostart) app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });

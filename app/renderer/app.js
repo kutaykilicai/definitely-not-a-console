@@ -597,6 +597,7 @@
       { label: t('themeMusic'), icon: ICONS.music || ICONS.check, value: st.themeMusic !== false ? t('on') : t('off'), stay: true, run: () => set('themeMusic', data.settings.themeMusic === false) },
       { label: t('themeVolume'), icon: ICONS.music || ICONS.check, value: `%${Math.round((st.themeVolume ?? 0.5) * 100)}`, stay: true, run: () => { const v = [0.2, 0.35, 0.5, 0.7, 0.85, 1]; const i = v.findIndex((x) => x > (data.settings.themeVolume ?? 0.5) + 0.01); set('themeVolume', v[i < 0 ? 0 : i]); } },
       { label: t('themeOn'), icon: ICONS.image, value: st.theme !== false ? t('on') : t('off'), stay: true, run: () => set('theme', data.settings.theme === false).then(() => { themeFocus(true); if (xdash) xdash.applyTheme(true); }) },
+      { label: t('updates'), icon: ICONS.update || ICONS.check, value: updCount() ? t('updCount', { n: updCount() }) : '', stay: true, run: () => updatesOverlay() },
       { label: t('bootIntro'), icon: ICONS.info, value: st.bootIntro === 'off' ? t('bootOff') : t('bootOnce'), stay: true, run: () => set('bootIntro', data.settings.bootIntro === 'off' ? 'once' : 'off') },
       { label: t('introScreen'), icon: ICONS.info, value: introLabel(st.intro), stay: true, run: () => set('intro', intros[(intros.indexOf(data.settings.intro) + 1) % 3]) },
       { label: t('autostart'), icon: ICONS.power, value: st.autostart ? t('on') : t('off'), stay: true, run: () => set('autostart', !data.settings.autostart) },
@@ -610,6 +611,81 @@
     const o = listOverlay({ entries: () => { Object.assign(st, data.settings); return entries(); }, full: true, title: t('settings'), keepOpen: true });
     o.input = ((orig) => (a) => { orig(a); })(o.input);
     pushOverlay(o);
+  }
+
+  // ---------- port updates (Ayarlar > Güncellemeler) ----------
+  let upd = null;   // last view from the main process
+  const updStatus = (r) => !r ? '' : ({ current: t('updNone'), update: t('updAvail'), hold: t('updHold'), unknown: t('updUnknown'), missing: t('updMissing'), error: t('updError') }[r.status] || r.status);
+  const updWhy = (r) => (r && r.hold || []).map((h) => (h.kind === 'wait' ? t('updWait', { d: Math.floor(h.days), n: h.waitDays }) : t('updIssue', { n: h.number, title: h.title }))).join(' · ');
+  const updCount = () => ((upd && upd.results) || []).filter((r) => r.status === 'update').length;
+  const fmtDate = (ts) => (ts ? new Date(ts).toLocaleString(data.settings.language === 'en' ? 'en-GB' : 'tr-TR', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' }) : t('updNever'));
+  function textOverlay(title, rows) {
+    const el = document.createElement('div'); el.className = 'full';
+    el.innerHTML = `<h1>${esc(title)}</h1><div class="info">${rows.map(([k, v]) => `<div class="row"><div class="k">${esc(k)}</div><div class="v">${esc(v)}</div></div>`).join('')}</div>`;
+    pushOverlay({ el, render() {}, input(a) { if (a === 'back' || a === 'select' || a === 'options') popOverlay(); }, hints: [['B', t('back')]] });
+  }
+  async function updatesOverlay() {
+    upd = await api.updates('view');
+    const busy = () => upd && upd.job;
+    const entries = () => {
+      const res = (id) => (upd.results || []).find((r) => r.id === id);
+      const rows = [{ label: busy() && upd.job.kind === 'check' ? t('updChecking') : t('updCheck'), icon: ICONS.update || ICONS.check, value: `${t('updLast')}: ${fmtDate(upd.lastCheck)}`, stay: true, run: async () => { if (busy()) return; upd.job = { kind: 'check' }; o.render(); upd = await api.updates('check'); o.render(); } }];
+      for (const p of upd.ports || []) {
+        const r = res(p.id);
+        const ver = r ? `${r.installed || '?'}${r.estimate ? '*' : ''}${r.latest && r.status !== 'current' ? ` → ${r.latest}` : ''}` : '';
+        rows.push({ label: p.title, icon: ICONS.update || ICONS.library, value: busy() && upd.job.id === p.id ? t('updBusy') : [ver, updStatus(r)].filter(Boolean).join('  ·  '), stay: true, run: () => portOverlay(p.id) });
+      }
+      rows.push({ label: t('updNew'), icon: ICONS.library, value: upd.feed && upd.feed.items && upd.feed.items.length ? String(upd.feed.items.length) : '', stay: true, run: () => feedOverlay() });
+      return rows;
+    };
+    const o = listOverlay({ entries, full: true, title: t('updates'), keepOpen: true });
+    o.kind = 'updates'; o.refresh = (v) => { upd = v; o.render(); };
+    pushOverlay(o);
+  }
+  function portOverlay(id) {
+    const p = () => (upd.ports || []).find((x) => x.id === id) || {};
+    const r = () => (upd.results || []).find((x) => x.id === id);
+    const reload = async () => { upd = await api.updates('view'); overlays.forEach((x) => x.render && x.render()); };
+    const doUpdate = async () => {
+      if (running) { toast(t('updRunning'), p().title); return; }
+      const rr = r(); toast(t('updBusy'), `${p().title} ${rr.latest}`);
+      const out = await api.updates('update', id);
+      await reload();
+      if (out && out.ok) toast(t('updDone', { name: p().title, ver: out.version }), '');
+      else if (out && out.blocked) toast(t('updRunning'), p().title);
+      else toast(t('updFailed'), (out && out.error) || '');
+    };
+    const entries = () => {
+      const rr = r(); const pp = p(); const backups = (upd.backups && upd.backups[id]) || [];
+      const rows = [
+        { label: t('updInstalledVer'), icon: ICONS.info, value: rr ? `${rr.installed || '?'}${rr.estimate ? ` (${t('updEstimate')})` : ''}` : '?', stay: true },
+        { label: t('updLatestVer'), icon: ICONS.info, value: rr && rr.latest ? `${rr.latest} · ${fmtDate(Date.parse(rr.published))}` : '-', stay: true },
+        { label: t('updStatus'), icon: ICONS.info, value: [updStatus(rr), updWhy(rr)].filter(Boolean).join(' · '), stay: true },
+      ];
+      if (rr && rr.notes) rows.push({ label: t('updNotes'), icon: ICONS.info, value: rr.notes.split('\n').filter(Boolean).join(' · ').slice(0, 70), stay: true, run: () => textOverlay(`${pp.title} ${rr.latest}`, rr.notes.split('\n').filter(Boolean).slice(0, 12).map((l) => ['', l])) });
+      if (rr && (rr.status === 'update' || rr.status === 'hold')) rows.push({ label: t('updInstall'), icon: ICONS.update || ICONS.check, stay: true, run: () => (rr.status === 'hold' ? confirmDialog(t('updHoldAsk', { why: updWhy(rr) }), doUpdate) : confirmDialog(t('updConfirm', { name: pp.title, ver: rr.latest }), doUpdate)) });
+      rows.push({ label: t('updRollback'), icon: ICONS.back || ICONS.check, value: backups[0] ? `${backups[0].version || '?'} · ${fmtDate(Date.parse(backups[0].at))}` : t('updNoBackup'), stay: true, run: () => { if (!backups[0]) return; if (running) { toast(t('updRunning'), pp.title); return; } confirmDialog(`${t('updRollback')}: ${pp.title} ${backups[0].version || ''}?`, async () => { const out = await api.updates('rollback', id); await reload(); toast(out && out.ok ? t('updRolled', { name: pp.title, ver: out.version || '?' }) : t('updFailed'), (out && (out.error || out.blocked)) || ''); }); } });
+      rows.push({ label: t('updMode'), icon: ICONS.pad, value: pp.mode === 'auto' ? t('updAuto') : t('updNotify'), stay: true, run: async () => { await api.updates('set', id, { mode: pp.mode === 'auto' ? 'notify' : 'auto' }); await reload(); } });
+      rows.push({ label: t('updSource'), icon: ICONS.info, value: `github.com/${pp.repo}`, stay: true });
+      rows.push({ label: t('updFolder'), icon: ICONS.folder, value: pp.installDir || '-', stay: true });
+      return rows;
+    };
+    const o = listOverlay({ entries, full: true, title: p().title, keepOpen: true }); o.kind = 'port';
+    pushOverlay(o);
+  }
+  function feedOverlay() {
+    const items = (upd.feed && upd.feed.items) || [];
+    if (!items.length) { textOverlay(t('updNew'), [['', t('updFeedNone')]]); return; }
+    const o = listOverlay({ full: true, title: t('updNew'), keepOpen: true, entries: items.map((it) => ({ label: it.title, icon: it.installed ? ICONS.check : ICONS.library, value: `${it.installed ? `${t('updInstalled')} · ` : ''}${new Date(it.date).toLocaleDateString(data.settings.language === 'en' ? 'en-GB' : 'tr-TR', { day: 'numeric', month: 'short' })}`, stay: true, run: () => api.updates('open', it.link) })) });
+    o.kind = 'feed'; pushOverlay(o);
+  }
+  // after a background check: a quiet toast for releases not announced before (never during a game)
+  function onUpdatesChanged(v) {
+    upd = v; overlays.forEach((x) => (x.kind === 'updates' || x.kind === 'port') && x.render && x.render());
+    if (running || CAPTURE || !v || v.job) return;
+    const seen = (data.state && data.state.updSeen) || {}; let changed = false;
+    for (const r of v.results || []) if (r.status === 'update' && seen[r.id] !== r.latest) { const pp = (v.ports || []).find((p) => p.id === r.id); toast(t('updToast', { name: pp ? pp.title : r.id, ver: r.latest }), ''); seen[r.id] = r.latest; changed = true; break; }
+    if (changed) { data.state = data.state || {}; data.state.updSeen = seen; api.saveState({ updSeen: seen }); }
   }
 
   // Hold time for going home during a game: 0,6 / 1 / 1,5 / 2 s.
@@ -981,6 +1057,7 @@
   api.on('game-resumed', () => { closeAll(); paused = false; $('#blackout').classList.add('fast'); $('#blackout').classList.remove('off'); launchScreen('black'); });
   api.on('game-paused', (d) => { if (d && d.id) { running = d.id; paused = true; layoutRow(true); renderHero(); } });
   api.on('confirm-quit', (d) => quitDialog(d));
+  api.on('updates-changed', (v) => onUpdatesChanged(v));
   // snd0.at9 was turned into Ogg in the background: the game has music now
   api.on('theme-update', (d) => {
     if (!d || !data) return;

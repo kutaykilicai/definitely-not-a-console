@@ -139,7 +139,7 @@ function holdReasons(rel, { issues = [], now = Date.now(), waitDays = 3, keyword
   return out;
 }
 
-const summarize = (md, n = 280) => String(md || '').replace(/\r/g, '').replace(/^#+\s*/gm, '').replace(/\*\*|__|`/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\n{2,}/g, '\n').trim().slice(0, n);
+const summarize = (md, n = 280) => String(md || '').replace(/\r/g, '').replace(/^#+\s*/gm, '').replace(/^\s*[-*+]\s+/gm, '').replace(/\*\*|__|`/g, '').replace(/\[([^\]]+)\]\([^)]+\)/g, '$1').replace(/\n{2,}/g, '\n').trim().slice(0, n);
 
 // Check every port. Returns [{ id, title, installed, latest, status, hold, notes, asset, release }].
 async function checkAll(doc, { gh, now = Date.now(), fileVersion, skipIssues = false } = {}) {

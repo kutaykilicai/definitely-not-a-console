@@ -68,6 +68,23 @@ if (mode === 'theme') {
   png(path.join(UG, 'muz-x', 'cover.png'), '2050c0'); tone(path.join(UG, 'muz-x', 'music.ogg'), 330, 30);
   settings.themeVolume = 0.5;
 }
+if (mode === 'updates') {
+  // two "ports" in folders with Turkish letters, and a fake GitHub (test/fake-github.js) state for them
+  const FG = require('./fake-github.js'); const GH = process.env.FAKE_GH || 'http://127.0.0.1:47811';
+  const PD = path.join(base, 'Portlar'); fs.rmSync(PD, { recursive: true, force: true });
+  const mkPort = (dir, ver) => { fs.mkdirSync(path.join(dir, 'user', 'saves'), { recursive: true }); fs.writeFileSync(path.join(dir, 'Game.exe'), `exe ${ver}`); fs.writeFileSync(path.join(dir, 'version.txt'), ver); fs.writeFileSync(path.join(dir, 'user', 'saves', 'slot1.sav'), 'KAYIT'); fs.writeFileSync(path.join(dir, 'oyun.ini'), 'ayar=1'); };
+  const A = path.join(PD, 'Örnek Port'), B = path.join(PD, 'Taze Port'); mkPort(A, '1.0'); mkPort(B, '2.0');
+  const day = 86400e3; const isoAgo = (d) => new Date(Date.now() - d * day).toISOString().replace(/\.\d+Z$/, 'Z');
+  const ra = FG.release(GH, { tag: 'v1.1', name: 'ornek-win.zip', published: isoAgo(6), body: '## Düzeltmeler\n- Ses cızırtısı giderildi\n- Yükleme ekranı hızlandı', files: { 'Game.exe': 'exe 1.1', 'version.txt': '1.1', 'yeni.dll': 'yeni', 'oyun.ini': 'VARSAYILAN', 'user/saves/slot1.sav': 'BOŞ' } });
+  const rb = FG.release(GH, { tag: 'v2.1', name: 'taze-win.zip', published: isoAgo(1), body: 'Yeni sürüm', files: { 'Game.exe': 'exe 2.1', 'version.txt': '2.1' } });
+  const files = { ...ra.files, ...rb.files }; const filesB64 = Object.fromEntries(Object.entries(files).map(([k, v]) => [k, v.toString('base64')]));
+  const rss = `<?xml version="1.0"?><rss version="2.0"><channel><title>t</title><item><title>Örnek Port Recompilation</title><link>https://example.invalid/ornek/</link><pubDate>Thu, 22 Oct 2026 00:00:00 +0000</pubDate><category>decompilations-recompilations</category></item><item><title>Başka Bir Oyun PC Port</title><link>https://example.invalid/baska/</link><pubDate>Wed, 21 Oct 2026 00:00:00 +0000</pubDate><category>decompilations-recompilations</category></item><item><title>Tarayıcı Oyunu</title><link>https://example.invalid/web/</link><pubDate>Wed, 21 Oct 2026 00:00:00 +0000</pubDate><category>browser-based</category></item></channel></rss>`;
+  fs.writeFileSync(path.join(base, 'fakegh.json'), JSON.stringify({ repos: { 'test/ornek': { releases: [ra.rel], issues: [] }, 'test/taze': { releases: [rb.rel], issues: [] } }, filesB64, rss, remaining: 60 }));
+  doc.games.push(g('port-a', 'Örnek Port', { exe: path.join(A, 'Game.exe'), workingDir: A }), g('port-b', 'Taze Port', { exe: path.join(B, 'Game.exe'), workingDir: B }));
+  const port = (id, title, repo, dir, asset) => ({ id, title, repo, gameId: `port-${id === 'ornek' ? 'a' : 'b'}`, tagPattern: '^v(\\d[\\w.-]*)$', assetPattern: asset, installDir: dir, exeCheck: ['Game.exe'], detect: [{ type: 'file', file: 'version.txt' }], protect: ['user/**', '*.ini'], mode: 'notify' });
+  fs.writeFileSync(path.join(D, 'ports.json'), JSON.stringify({ version: 1, settings: { waitDays: 3, keepBackups: 2, checkHours: 24, feed: true }, ports: [port('ornek', 'Örnek Port', 'test/ornek', A, '^ornek-win\\.zip$'), port('taze', 'Taze Port', 'test/taze', B, '^taze-win\\.zip$')] }, null, 2));
+  fs.writeFileSync(path.join(base, 'procs.json'), '[]');
+}
 if (mode === 'many') for (let i = 0; i < 300; i++) doc.games.push(g(`x360-${i}`, `Xbox Oyunu ${i} İğüşçö`, { console: 'x360', args: '1' }));
 if (mode === 'flow' || mode === 'close') settings.bootIntro = 'once';
 if (mode === 'single') doc.games = doc.games.find((x) => x.console === 'x360');   // one game, not a list

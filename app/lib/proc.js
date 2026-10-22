@@ -122,4 +122,4 @@ class GameRunner extends EventEmitter {
   }
 }
 
-module.exports = { GameRunner, splitArgs, exeNamesIn };
+module.exports = { GameRunner, splitArgs, exeNamesIn, runningNames };
