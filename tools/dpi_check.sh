@@ -15,6 +15,13 @@ for c in "1080p_100 1920x1080 1" "1080p_125 1536x864 1.25" "1080p_150 1280x720 1
 done
 # other screen shapes: the Xbox 360 frame must be centred and fully visible
 for c in "21x9 2560x1080" "16x10 1920x1200" "5x4 1280x1024"; do set -- $c; shot x360_$1 $2 1 "$X"; done
+# long lists (Ayarlar, Oyunları yönet, Kütüphane) at the same sizes: walk the focus to the last row and
+# check each focused row is on screen. Only comparing the first screen is what let 1.4.1 ship a
+# Settings list whose lower rows could not be reached.
+LBAD=0
+for c in "1080p_100 1920x1080 1" "1080p_125 1536x864 1.25" "1080p_150 1280x720 1.5" "1440p_100 2560x1440 1" "1440p_125 2048x1152 1.25" "1440p_150 1707x960 1.5"; do
+  set -- $c; r=$(E2E_OUT=$O/lists-$1 SCREEN=4000x2400x24 QA_SIZE=$2 PS5MENU_SHOT_DPR=$3 "$R/tools/e2e_all.sh" qa-lists | head -1); echo "${r%% *} lists $1 ${r#* }"; case $r in PASS*) ;; *) LBAD=1;; esac
+done
 python3 - "$O" <<'PY'
 import sys, os
 from PIL import Image, ImageChops, ImageStat
@@ -36,3 +43,4 @@ for n in ('21x9', '16x10', '5x4'):
     print(f"{'OK  ' if ok else 'DIFF'} x360 {n} {W}x{H} home tiles x {l}..{r}")
 sys.exit(1 if bad else 0)
 PY
+[ $? -eq 0 ] && [ $LBAD -eq 0 ]

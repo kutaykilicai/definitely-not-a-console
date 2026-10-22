@@ -51,6 +51,7 @@ if (mode === 'baddata') {
 if (mode === 'bootoff') { settings.bootIntro = 'off'; fs.copyFileSync(path.join(process.env.BOOT_FILES || '/workspace/ps5-menu-intro-user', 'ps5-boot.mp4'), path.join(intro, 'ps5-boot.mp4')); }
 if (mode === 'fuzz') settings.bootIntro = 'once';
 if (mode === 'empty') doc.games = doc.games.filter((x) => x.console !== 'x360');
+if (mode === 'lists') for (let i = 0; i < 40; i++) doc.games.push(g(`list-${i}`, `Liste Oyunu ${i} İğüşçö`, i % 2 ? { console: 'x360' } : {}));
 if (mode === 'many') for (let i = 0; i < 300; i++) doc.games.push(g(`x360-${i}`, `Xbox Oyunu ${i} İğüşçö`, { console: 'x360', args: '1' }));
 if (mode === 'flow' || mode === 'close') settings.bootIntro = 'once';
 if (mode === 'single') doc.games = doc.games.find((x) => x.console === 'x360');   // one game, not a list

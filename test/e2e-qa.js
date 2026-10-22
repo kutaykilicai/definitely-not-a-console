@@ -283,6 +283,44 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
         info.quits = quits; info.stuck = stuck;
         check(`fuzz ${N} random inputs (seed ${process.env.QA_SEED || 1}): menu always comes back to a settled, answering state`, bad === 0, JSON.stringify(stuck.slice(0, 3)));
       }
+      if (MODE === 'lists') {
+        // Full-screen lists longer than the screen must follow the focus down to the last row, at
+        // whatever window size / scaling this run uses (tools/dpi_check.sh runs it at 100-150 %).
+        info.size = await js('[innerWidth, innerHeight, devicePixelRatio]');
+        const view = (sel) => js(`(() => { const f = document.querySelector(${JSON.stringify(sel)}); const h = document.querySelector('#overlay .full h1'); if (!f || !h) return null;
+          const r = f.getBoundingClientRect(), hr = h.getBoundingClientRect(); const clip = getComputedStyle(f.parentElement).clipPath;
+          return { top: r.top, bot: r.bottom, hBot: hr.bottom, H: innerHeight, n: f.parentElement.children.length, i: [...f.parentElement.children].indexOf(f), moved: f.parentElement.style.transform || '', clip }; })()`);
+        const inView = (v) => v && v.bot <= v.H + 0.5 && v.top >= v.hBot - 0.5;
+        const walk = async (name, sel, key, steps, cols = 1) => {
+          const v0 = await view(sel);
+          check(`${name}: first view is not moved or clipped`, v0 && !v0.moved && (v0.clip === 'none' || !v0.clip), JSON.stringify(v0));
+          let worst = null, v = v0;
+          for (let i = 0; i < steps; i++) { await press(key); await sleep(25); v = await view(sel); if (!inView(v) && !worst) worst = { i, ...v }; }
+          if (process.env.QA_SHOT) fs.writeFileSync(`${process.env.QA_SHOT}/${name.replace(/[^a-z0-9]+/gi, '_')}.png`, (await win.webContents.capturePage()).toPNG());
+          check(`${name}: every focused row stays on screen down to the last one`, !worst && v && Math.floor(v.i / cols) === Math.floor((v.n - 1) / cols), JSON.stringify(worst || v));
+          for (let i = 0; i < steps; i++) { await press('up'); await sleep(10); }
+          const v1 = await view(sel);
+          check(`${name}: back at the top the list is where it started`, v1 && v1.i === 0 && !v1.moved, JSON.stringify(v1));
+        };
+        for (const c of ['ps5', 'x360']) {
+          if ((await st()).c !== c) { await press('consoleNext'); await settle(); await sleep(400); }
+          if (c === 'x360') { await focusX('settings'); await press('select'); } else await js('window.__ps5.openList("settings")');
+          await waitFor(async () => (await st()).ov > 0, 2000); await sleep(300);
+          const n = await js('document.querySelectorAll("#overlay .full .panel .it").length');
+          info[`${c}SettingsRows`] = n;
+          await walk(`${c} Ayarlar (${n} rows)`, '#overlay .full .panel .it.focus', 'down', n + 2);
+          await press('back'); await sleep(300);
+          await js('window.__ps5.openList("manage")'); await sleep(300);
+          const m = await js('document.querySelectorAll("#overlay .full .panel .it").length');
+          await walk(`${c} Oyunları yönet (${m} rows)`, '#overlay .full .panel .it.focus', 'down', m + 2);
+          await press('back'); await sleep(300);
+          await js('window.__ps5.openList("library")'); await sleep(300);
+          const g = await js('document.querySelectorAll("#overlay .full .grid .gitem").length');
+          await walk(`${c} Kütüphane (${g} games)`, '#overlay .full .grid .gitem.focus', 'down', Math.ceil(g / 6) + 2, 6);
+          await press('back'); await sleep(300);
+          check(`${c}: lists closed`, (await st()).ov === 0, JSON.stringify(await st()));
+        }
+      }
       if (MODE === 'soak') {
         const N = Number(process.env.QA_SOAK || 500);
         const dbg = win.webContents.debugger; dbg.attach('1.3');

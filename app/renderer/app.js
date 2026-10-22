@@ -291,6 +291,22 @@
   }
   function closeAll() { while (overlays.length) popOverlay(true); hints(null); }
 
+  // A full-screen list or grid taller than the screen (Ayarlar has 15 rows, the library can have
+  // many games) scrolls with the focus. At the top nothing is moved or clipped, so the first view is
+  // exactly as before; once scrolled, what went above the list's top edge is clipped so it does not
+  // run under the title. Stage units: the overlay is always 1080 tall (the stage is zoomed).
+  function keepInView(box, f, pad = 0) {
+    if (!f) return;
+    const room = (box.offsetParent ? box.offsetParent.clientHeight : 1080) - 60 - box.offsetTop;
+    let scroll = +box.dataset.scroll || 0;
+    const top = f.offsetTop - pad, bot = f.offsetTop + f.offsetHeight + pad;
+    if (bot - scroll > room) scroll = bot - room;
+    if (top - scroll < 0) scroll = top;
+    scroll = Math.max(0, Math.round(scroll));
+    box.dataset.scroll = scroll;
+    box.style.transform = scroll ? `translateY(${-scroll}px)` : '';
+    box.style.clipPath = scroll ? `inset(${scroll}px -40px -4000px -40px)` : '';
+  }
   // A vertical list overlay. entries: [{label, icon, value, danger, run}]
   function listOverlay({ entries, cls = 'pop', style = {}, title, full = false, keepOpen = false }) {
     const wrap = document.createElement('div');
@@ -301,6 +317,7 @@
     o.render = () => {
       const ents = typeof o.entries === 'function' ? o.entries() : o.entries;
       box.innerHTML = ents.map((e, i) => `<div class="it${i === o.index ? ' focus' : ''}${e.danger ? ' danger' : ''}" data-i="${i}">${e.icon || ''}<span>${esc(e.label)}</span>${e.value != null ? `<span class="val">${esc(e.value)}</span>` : ''}</div>`).join('');
+      if (full) keepInView(box, box.querySelector('.it.focus'));
       box.querySelectorAll('.it').forEach((el) => {
         el.addEventListener('mousemove', () => { if (!mouseLive() || o.index === +el.dataset.i) return; o.index = +el.dataset.i; o.render(); });
         el.addEventListener('click', () => { o.index = +el.dataset.i; o.input('select'); });
@@ -510,6 +527,7 @@
     o.render = () => {
       grid.innerHTML = games.map((g, i) => `<div class="gitem${i === o.index ? ' focus' : ''}" data-i="${i}"><div class="gi" style="background-image:${g.art && g.art.icon ? esc(cssUrl(g.art.icon)) : 'none'}"></div><div class="gt">${esc(g.title)}</div></div>`).join('');
       grid.querySelectorAll('.gitem').forEach((e) => { const g = games[+e.dataset.i]; const gi = e.querySelector('.gi'); if (g.art && g.art.icon) gi.style.backgroundImage = cssUrl(g.art.icon); else { const gt = genTile(g); gi.style.backgroundImage = gt.style; gi.classList.add('gen'); gi.innerHTML = g.art && g.art.exeIcon ? `<img class="exeic" src="${g.art.exeIcon}" alt="">` : ''; } });
+      keepInView(grid, grid.querySelector('.gitem.focus'), 10);
       grid.querySelectorAll('.gitem').forEach((e) => e.addEventListener('click', () => { if (o.index === +e.dataset.i) o.input('select'); else { o.index = +e.dataset.i; o.render(); } }));
     };
     o.input = (a) => {
@@ -985,7 +1003,7 @@
       try { await api.capture(); } finally { api.captureDone(); }
     }
     window.__ps5 = { dispatch, get nav() { return nav; }, get items() { return items; }, get overlays() { return overlays.length; },
-      get console() { return consoleId; }, get boot() { return bootP.on ? bootP.active.kind : null; }, skipBoot: () => bootP.skip(), get switching() { return switching; }, get guardInfo() { return { switching, launching, busyMs: Math.round(guard.busyUntil - performance.now()), consoleId, running: !!running, bootWanted: { ps5: bootWanted('ps5'), x360: bootWanted('x360') }, bootActive: !!bootP.active, shown: data && data.boot && data.boot.shown }; }, get x360() { return xdash && xdash.current(); }, get xdash() { return xdash; },
+      get console() { return consoleId; }, get boot() { return bootP.on ? bootP.active.kind : null; }, skipBoot: () => bootP.skip(), get switching() { return switching; }, get guardInfo() { return { switching, launching, busyMs: Math.round(guard.busyUntil - performance.now()), consoleId, running: !!running, bootWanted: { ps5: bootWanted('ps5'), x360: bootWanted('x360') }, bootActive: !!bootP.active, shown: data && data.boot && data.boot.shown }; }, get x360() { return xdash && xdash.current(); }, get xdash() { return xdash; }, openList: (w) => (w === 'library' ? libraryOverlay() : w === 'manage' ? manageOverlay() : settingsOverlay()),
       launchScreen: (mode, id) => launchScreen(mode, data.games.find((g) => g.id === id)) };
   }
   main().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<pre style="position:fixed;left:20px;top:20px;color:#f88;z-index:99;font:16px monospace;white-space:pre-wrap">${esc(e.stack || e)}</pre>`); });
