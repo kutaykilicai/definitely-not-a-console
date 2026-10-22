@@ -83,6 +83,15 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
         const stt = readJson(FILES.state, null);
         check('state.json is valid again', stt && typeof stt === 'object' && stt.console === 'ps5', JSON.stringify(stt).slice(0, 80));
       }
+      if (MODE === 'bootoff') {
+        check('Konsol Açılış İntrosu off: no intro at start', !(await st()).b);
+        await press('consoleNext'); await sleep(100); let s = await st();
+        check('no intro on the first switch either, just the slide', !s.b && s.sw, JSON.stringify(s));
+        await settle(); s = await st(); check('X360 menu', s.c === 'x360');
+        win.setSize(1600, 900); await sleep(500);
+        const v = await js('(() => { const f = document.querySelector("#x360 .x-panel.cur .x-tile.focus"); const r = f.getBoundingClientRect(); return r.left >= 0 && r.right <= innerWidth; })()');
+        check('window resized while on X360: focus still on screen', v);
+      }
       if (MODE === 'single') {
         await press('consoleNext'); await settle(); const s = await st();
         check('games.json with BOM and a bare one-game object (PowerShell 5): the game is there', s.c === 'x360' && s.x === 'naruto-rise-of-a-ninja', JSON.stringify(s));
@@ -214,6 +223,12 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
         // Alt+F4 while the PS5 intro plays: the app quits and does not come back by itself.
         let quit = false; app.once('will-quit', () => { quit = true; info.windowsAtQuit = BrowserWindow.getAllWindows().length; check('Alt+F4 during the intro: the app quits', true); finish(results.every((r) => r[1]) ? 0 : 1); });
         check('intro playing', (await st()).b === 'ps5');
+        if (process.env.QA_CLOSE_AT === 'x360') {
+          // skip the PS5 intro, start the switch to X360 and close in the middle of its intro
+          await press('select'); await waitFor(async () => !(await st()).b, 3000); await press('consoleNext');
+          check('X360 intro playing', await waitFor(async () => (await st()).b === 'x360', 2000));
+          await sleep(700);
+        }
         win.close();
         await sleep(6000);
         check('Alt+F4 during the intro: the app quits', quit, `windows ${BrowserWindow.getAllWindows().length}`);

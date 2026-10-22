@@ -55,7 +55,7 @@
     const vis = window.innerWidth / z, w = Math.max(1920 * 0.75, vis), xo = (Math.min(w, vis) - 1920) / 2;
     stage.style.setProperty('--xo', `${xo}px`); stage.style.setProperty('--xr', `${Math.max(xo, -96) + (w - vis)}px`); stage.style.setProperty('--xvis', `${vis}`);
   }
-  window.addEventListener('resize', () => { fit(); layoutRow(); });
+  window.addEventListener('resize', () => { fit(); layoutRow(); if (xdash) xdash.layout(true); });
   fit();
 
   function fmtDuration(sec) {
