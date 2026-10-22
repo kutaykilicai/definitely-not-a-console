@@ -316,7 +316,7 @@
       this.active = st;
       const finish = (quick, video) => {
         if (st.finished) return; st.finished = true;
-        cancelAnimationFrame(st.raf); clearTimeout(st.wait);
+        cancelAnimationFrame(st.raf); clearTimeout(st.wait); clearTimeout(st.cap);
         if (!revealed) reveal();
         if (st.stopAudio) st.stopAudio(quick ? 0.15 : video ? fadeOut / 1000 : 0.6);
         el.style.transition = `opacity ${quick ? 300 : fadeOut}ms cubic-bezier(0.33, 0, 0.2, 1)`; el.style.opacity = '0';
@@ -336,13 +336,21 @@
           audio.play().catch(() => { audio = null; st.stopAudio = this.sound && !muted ? this.sound.bootSynth(kind) : null; });
           st.stopAudio = (s) => { if (!audio) return; const a = audio; const v0 = a.volume; const t0 = performance.now(); const step = () => { const u = (performance.now() - t0) / (s * 1000); if (u >= 1) { a.pause(); return; } a.volume = v0 * (1 - u); requestAnimationFrame(step); }; step(); };
         } else if (this.sound && !muted) st.stopAudio = this.sound.bootSynth(kind);
-        Promise.all([loadImage(files.logo), Promise.resolve(this.markPath ? new Path2D(this.markPath) : null)]).then(([logo, mark]) => {
+        Promise.all([loadImage(files.logo), Promise.resolve(this.markPath ? new Path2D(this.markPath) : null)]).then(([logo0, mark]) => {
+          let logo = logo0;
+          // Safety net: the drawn intro always ends, whatever happens to the clock or the sound.
+          st.cap = setTimeout(() => finish(false), (DUR[kind] + 4) * 1000);
           const t0 = performance.now();
           const draw = () => {
             if (st.finished) return;
             // Follow the user's sound when there is one, so picture and sound stay together.
             const t = audio && !audio.paused && audio.currentTime > 0 ? audio.currentTime : (performance.now() - t0) / 1000;
-            frame(kind, ctx, t, { logo, mark, text });
+            // A logo file that loads but cannot be used (empty, odd size) must not stop the intro:
+            // draw on with the built-in mark instead; if even that fails, end the intro.
+            try { frame(kind, ctx, t, { logo, mark, text }); } catch (e) {
+              console.warn('boot frame', e && e.message);
+              if (logo) { logo = null; } else { finish(true); return; }
+            }
             if (t >= DUR[kind]) { finish(false); return; }
             st.raf = requestAnimationFrame(draw);
           };
@@ -354,17 +362,30 @@
         // At `end` (or the real end) the layer fades into the menu while the video keeps running
         // under the fade, so there is no frozen or black frame between the two.
         const v = document.createElement('video'); v.preload = 'auto'; v.playsInline = true; v.muted = muted; v.volume = clamp(volume);
-        const start = files.start || 0; const end = files.end || 0;
+        let start = files.start || 0; let end = files.end && files.end > start ? files.end : 0;
         st.media = v; el.appendChild(v);
         let failed = false, started = false;
         const fail = () => { if (failed || st.finished) return; failed = true; v.remove(); st.media = null; clearTimeout(st.wait); if (!started) { started = true; begin(); } fromStart(); };
         v.addEventListener('error', fail);
         v.addEventListener('ended', () => finish(false, true));
-        const watch = () => { if (st.finished || failed) return; if (end && v.currentTime >= end) { finish(false, true); return; } st.raf = requestAnimationFrame(watch); };
+        // A video that stops moving (broken stream, decoder stuck) ends the intro after 4 s instead of
+        // covering the menu for good.
+        let lastT = -1, lastMove = performance.now();
+        const watch = () => {
+          if (st.finished || failed) return;
+          if (end && v.currentTime >= end) { finish(false, true); return; }
+          const now = performance.now();
+          if (v.currentTime !== lastT) { lastT = v.currentTime; lastMove = now; } else if (now - lastMove > 4000) { finish(false, true); return; }
+          st.raf = requestAnimationFrame(watch);
+        };
         const go = () => { if (st.finished || failed) return; v.play().then(watch).catch(() => { v.muted = true; v.play().then(watch).catch(fail); }); };
         let begin = () => {};
         const ready = () => { if (started || failed) return; started = true; clearTimeout(st.wait); begin(); };
-        v.addEventListener('loadeddata', () => { if (start && Math.abs(v.currentTime - start) > 0.05) { v.currentTime = start; v.addEventListener('seeked', ready, { once: true }); } else ready(); }, { once: true });
+        v.addEventListener('loadeddata', () => {
+          // A start at or past the end of the file is a bad trim: play the whole video instead of
+          // seeking to the last frame (play() from there restarts at 0 after a flash).
+          if (isFinite(v.duration) && start >= v.duration - 0.5) { start = 0; end = 0; }
+          if (start && Math.abs(v.currentTime - start) > 0.05) { v.currentTime = start; v.addEventListener('seeked', ready, { once: true }); } else ready(); }, { once: true });
         st.wait = setTimeout(fail, 2500);
         v.src = files.video;
         st.stopAudio = (s) => { const v0 = v.volume; const t0 = performance.now(); const step = () => { const u = (performance.now() - t0) / (s * 1000); if (u >= 1 || st.media !== v) return; v.volume = v0 * (1 - u); requestAnimationFrame(step); }; step(); };

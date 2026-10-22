@@ -521,7 +521,8 @@
     const st = data.settings;
     const intros = ['press', 'fade', 'none'];
     const introLabel = (v) => ({ press: t('introPress'), fade: t('introFade'), none: t('introNone') }[v]);
-    const set = async (k, v) => { data.settings = await api.setSetting(k, v); applySettings(); };
+    // Redraw once the new value is saved: the row used to show the old value until the next move.
+    const set = async (k, v) => { data.settings = await api.setSetting(k, v); applySettings(); Object.assign(st, data.settings); if (overlays.includes(o)) o.render(); };
     const entries = () => [
       { label: t('manageGames'), icon: ICONS.edit, stay: true, run: () => manageOverlay() },
       { label: t('rowOrder'), icon: ICONS.library, value: st.rowOrder === 'manual' ? t('orderManual') : t('orderRecent'), stay: true, run: () => set('rowOrder', data.settings.rowOrder === 'manual' ? 'recent' : 'manual').then(() => refresh()) },
@@ -538,7 +539,7 @@
       { label: t('homePadMs'), icon: ICONS.clock, value: holdLabel(st.homePadMs), stay: true, run: () => set('homePadMs', nextHold(data.settings.homePadMs)) },
       { label: t('exitMenu'), icon: ICONS.power, danger: true, run: () => api.window('quit') },
     ];
-    const o = listOverlay({ entries: () => { const e = entries(); Object.assign(st, data.settings); return e; }, full: true, title: t('settings'), keepOpen: true });
+    const o = listOverlay({ entries: () => { Object.assign(st, data.settings); return entries(); }, full: true, title: t('settings'), keepOpen: true });
     o.input = ((orig) => (a) => { orig(a); })(o.input);
     pushOverlay(o);
   }
@@ -980,7 +981,7 @@
       try { await api.capture(); } finally { api.captureDone(); }
     }
     window.__ps5 = { dispatch, get nav() { return nav; }, get items() { return items; }, get overlays() { return overlays.length; },
-      get console() { return consoleId; }, get boot() { return bootP.on ? bootP.active.kind : null; }, skipBoot: () => bootP.skip(), get switching() { return switching; }, get guardInfo() { return { switching, launching, busyMs: Math.round(guard.busyUntil - performance.now()), consoleId }; }, get x360() { return xdash && xdash.current(); },
+      get console() { return consoleId; }, get boot() { return bootP.on ? bootP.active.kind : null; }, skipBoot: () => bootP.skip(), get switching() { return switching; }, get guardInfo() { return { switching, launching, busyMs: Math.round(guard.busyUntil - performance.now()), consoleId }; }, get x360() { return xdash && xdash.current(); }, get xdash() { return xdash; },
       launchScreen: (mode, id) => launchScreen(mode, data.games.find((g) => g.id === id)) };
   }
   main().catch((e) => { document.body.insertAdjacentHTML('beforeend', `<pre style="position:fixed;left:20px;top:20px;color:#f88;z-index:99;font:16px monospace;white-space:pre-wrap">${esc(e.stack || e)}</pre>`); });
