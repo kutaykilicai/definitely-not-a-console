@@ -49,6 +49,7 @@ if (mode === 'baddata') {
   doc.games.push(null, 5, 'metin', [], {}, { id: 'num-title', title: 12345, exe: path.join(bin, 'dummy-game.sh') }, { id: 'no-title', exe: path.join(bin, 'dummy-game.sh'), console: 'x360' }, { title: 'Kimliksiz Oyun', exe: path.join(bin, 'dummy-game.sh') });
 }
 if (mode === 'bootoff') { settings.bootIntro = 'off'; fs.copyFileSync(path.join(process.env.BOOT_FILES || '/workspace/ps5-menu-intro-user', 'ps5-boot.mp4'), path.join(intro, 'ps5-boot.mp4')); }
+if (mode === 'fuzz') settings.bootIntro = 'once';
 if (mode === 'empty') doc.games = doc.games.filter((x) => x.console !== 'x360');
 if (mode === 'many') for (let i = 0; i < 300; i++) doc.games.push(g(`x360-${i}`, `Xbox Oyunu ${i} İğüşçö`, { console: 'x360', args: '1' }));
 if (mode === 'flow' || mode === 'close') settings.bootIntro = 'once';

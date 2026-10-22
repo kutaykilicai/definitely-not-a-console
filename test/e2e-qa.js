@@ -233,6 +233,53 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
         await sleep(6000);
         check('Alt+F4 during the intro: the app quits', quit, `windows ${BrowserWindow.getAllWindows().length}`);
       }
+      if (MODE === 'fuzz') {
+        // Random input (every menu action, with A), several thousand steps. File dialogs, folder
+        // opening and quitting are stubbed. Every 150 steps: B until nothing is open, then the menu
+        // must be settled, visible and answering.
+        const E = require('electron');
+        E.dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
+        E.shell.openPath = async () => ''; E.shell.showItemInFolder = () => {}; E.shell.openExternal = async () => {};
+        let quits = 0; app.quit = () => { quits++; };
+        const trail = []; const T = (x) => { trail.push(`${(Date.now() % 100000)} ${x}`); if (trail.length > 60) trail.shift(); };
+        const send0 = win.webContents.send.bind(win.webContents); win.webContents.send = (ch, ...r) => { T('ipc ' + ch + ' ' + JSON.stringify(r[0] || '').slice(0, 60)); return send0(ch, ...r); };
+        runner.on('started', (g) => T('runner started ' + g.id)); runner.on('exited', (g) => T('runner exited ' + g.id));
+        const h0 = win.hide.bind(win); win.hide = () => { T('win.hide'); h0(); };
+        let seed = Number(process.env.QA_SEED || 1); const rnd = () => { seed = (seed * 1103515245 + 12345) % 2147483648; return seed / 2147483648; };
+        const W = [['up', 8], ['down', 8], ['left', 10], ['right', 10], ['select', 5], ['back', 5], ['tabNext', 3], ['tabPrev', 3], ['tabToggle', 2], ['options', 3], ['home', 2], ['x', 1], ['y', 1], ['consoleNext', 3], ['consolePrev', 3]];
+        const tot = W.reduce((a, b) => a + b[1], 0);
+        const pick = () => { let r = rnd() * tot; for (const [k, w] of W) { if ((r -= w) < 0) return k; } return 'right'; };
+        const N = Number(process.env.QA_FUZZ || 2000); let bad = 0; const stuck = [];
+        for (let i = 1; i <= N; i++) {
+          if (!win.isVisible() || win.isMinimized()) { if (runner.running) await waitFor(() => !runner.running, 20000, 200); win.restore(); win.show(); await sleep(400); }
+          const k = pick();
+          T('press ' + k); await press(k).catch(() => {});
+          await sleep(rnd() < 0.3 ? 0 : Math.floor(rnd() * 90));
+          if (i % 150 === 0 || i === N) {
+            // a launch may still be on its way (the game starts ~0.3 s after A): let it run and end
+            await sleep(900);
+            await waitFor(async () => !runner.running && !(await js('window.__ps5.guardInfo')).launching, 30000, 200);
+            await sleep(800); if (!win.isVisible() || win.isMinimized()) { win.restore(); win.show(); await sleep(600); }
+            for (let j = 0; j < 8 && (await st()).ov > 0; j++) { await press('back'); await sleep(250); }
+            await waitFor(async () => { const q = await st(); return !q.sw && !q.b; }, 15000, 50);
+            const q = await st();
+            const g = await js('window.__ps5.guardInfo');
+            const ok = q.ov === 0 && !q.sw && !q.b && !g.launching && !(await js('document.querySelector("#launch").classList.contains("on")'));
+            // the menu still answers: a switch goes through and comes back
+            // quiet = no slide and no intro for 500 ms in a row (an intro can start right after a slide)
+            const quiet = async () => { let since = 0; await waitFor(async () => { const z = await st(); if (z.sw || z.b) { since = 0; return false; } since = since || Date.now(); return Date.now() - since > 500; }, 20000, 40); };
+            const n0 = q.n; await press('consoleNext'); await waitFor(async () => (await st()).n !== n0, 1500, 20); await quiet();
+            const n1 = (await st()).n; await press('consolePrev'); await waitFor(async () => (await st()).n !== n1, 1500, 20); await quiet();
+            const answers = (await st()).n === n0 + 2;
+            const sync = !ok || !answers ? await js('(() => { const n = window.__ps5switches; const l = document.querySelector("#launch").className; window.__ps5.dispatch("consoleNext"); return JSON.stringify({ before: n, after: window.__ps5switches, launch: l, sw: window.__ps5.switching }); })()') : '';
+            if (sync) { log('sync', sync); log('trail\n' + trail.join('\n')); }
+            const more = !ok || !answers ? await js('JSON.stringify({ intro: document.querySelector("#intro").className, dlg: [...document.querySelectorAll(".dialog")].map((d) => d.parentElement.id + ":" + d.textContent.slice(0, 40)), nav: window.__ps5.nav, n: window.__ps5switches, ov: window.__ps5.overlays, stage: document.querySelector("#stage").className, vis: document.visibilityState, focus: document.hasFocus() })') : '';
+            if (!ok || !answers) { bad++; stuck.push({ i, q, g, answers, more }); log('stuck', i, JSON.stringify(q), JSON.stringify(g)); }
+          }
+        }
+        info.quits = quits; info.stuck = stuck;
+        check(`fuzz ${N} random inputs (seed ${process.env.QA_SEED || 1}): menu always comes back to a settled, answering state`, bad === 0, JSON.stringify(stuck.slice(0, 3)));
+      }
       if (MODE === 'soak') {
         const N = Number(process.env.QA_SOAK || 500);
         const dbg = win.webContents.debugger; dbg.attach('1.3');
