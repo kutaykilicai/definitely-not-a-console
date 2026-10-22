@@ -626,7 +626,7 @@
   // ---------- actions ----------
   async function launch(g, opts = {}) {
     if (launching) return;
-    if (running && running === g.id) { api.window('hide'); return; }
+    if (running && running === g.id) { const r = await api.window('hide'); if (r !== 'none') return; running = null; paused = false; }
     if (!g.exe) { SOUND.play('error'); toast(t('launchFailed'), t('missingExe'), g.art && g.art.icon); return; }
     if (running && !opts.replace) { switchDialog(g); return; }
     launching = true;

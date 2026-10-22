@@ -931,6 +931,8 @@ ipcMain.handle('open', (_e, what, id) => {
 ipcMain.handle('window', (_e, cmd) => {
   if (!win) return;
   if (cmd === 'minimize') { pinTop(false); win.setFullScreen(false); win.minimize(); }
+  // back to the game; if no game is actually running any more, say so and keep the menu up
+  if (cmd === 'hide' && !runner.running) return 'none';
   if (cmd === 'hide') { if (session && seamless()) return resumeGame(); pinTop(false); win.setFullScreen(false); win.hide(); }
   if (cmd === 'quit') { if (needsQuitQuestion()) askQuit(); else app.quit(); }
   if (cmd === 'devtools') win.webContents.toggleDevTools();

@@ -240,7 +240,10 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
         const E = require('electron');
         E.dialog.showOpenDialog = async () => ({ canceled: true, filePaths: [] });
         E.shell.openPath = async () => ''; E.shell.showItemInFolder = () => {}; E.shell.openExternal = async () => {};
+        // quitting is stubbed: the menu's own quit (with or without the game) is answered as "cancel",
+        // so the app's quitting state is never entered half-way
         let quits = 0; app.quit = () => { quits++; };
+        E.ipcMain.removeHandler('quit'); E.ipcMain.handle('quit', () => { quits++; return false; });
         const trail = []; const T = (x) => { trail.push(`${(Date.now() % 100000)} ${x}`); if (trail.length > 60) trail.shift(); };
         const send0 = win.webContents.send.bind(win.webContents); win.webContents.send = (ch, ...r) => { T('ipc ' + ch + ' ' + JSON.stringify(r[0] || '').slice(0, 60)); return send0(ch, ...r); };
         runner.on('started', (g) => T('runner started ' + g.id)); runner.on('exited', (g) => T('runner exited ' + g.id));
