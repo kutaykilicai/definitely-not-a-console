@@ -13,7 +13,7 @@ cd "$R/app"
 for S in $SUITES; do
   L="$O/$S.log"
   case $S in
-    unit) : > "$L"; for t in unit x360 homeflow loadprogress winwatch qa; do [ -f "$R/test/$t.test.js" ] && node "$R/test/$t.test.js" >> "$L" 2>&1 || { [ -f "$R/test/$t.test.js" ] && echo "FAIL $t" >> "$L"; }; done
+    unit) : > "$L"; for t in unit x360 homeflow loadprogress winwatch qa ports; do [ -f "$R/test/$t.test.js" ] && node "$R/test/$t.test.js" >> "$L" 2>&1 || { [ -f "$R/test/$t.test.js" ] && echo "FAIL $t" >> "$L"; }; done
           if grep -q "FAIL\|Error" "$L"; then echo "FAIL unit"; FAIL=1; else echo "PASS unit $(grep -c passed "$L") files"; fi; continue;;
     e2e-launch) fresh; PS5MENU_ROOT=$R/test/root PS5MENU_FAKE_HELPER=$R/test/fake-helper.js PS5MENU_SELFTEST=$R/test/$S.js PS5MENU_SELFTEST_OUT=$O/$S.json X ./node_modules/.bin/electron . --no-sandbox --windowed > "$L" 2>&1;;
     e2e-home|e2e-progress|e2e-seamless) fresh; FAKE_VISUAL=1 PS5MENU_DEBUG=1 PS5MENU_ROOT=$R/test/root PS5MENU_FAKE_HELPER=$R/test/fake-helper.js PS5MENU_SELFTEST=$R/test/$S.js PS5MENU_SELFTEST_OUT=$O/$S.json X ./node_modules/.bin/electron . --no-sandbox --size=1920x1080 > "$L" 2>&1;;
