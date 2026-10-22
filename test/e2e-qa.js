@@ -83,6 +83,10 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
         const stt = readJson(FILES.state, null);
         check('state.json is valid again', stt && typeof stt === 'object' && stt.console === 'ps5', JSON.stringify(stt).slice(0, 80));
       }
+      if (MODE === 'single') {
+        await press('consoleNext'); await settle(); const s = await st();
+        check('games.json with BOM and a bare one-game object (PowerShell 5): the game is there', s.c === 'x360' && s.x === 'naruto-rise-of-a-ninja', JSON.stringify(s));
+      }
       if (MODE === 'trim' || MODE === 'beyond') {
         const timeBoot = async () => { const t0 = Date.now(); await waitFor(async () => !(await st()).b, 30000, 100); return (Date.now() - t0) / 1000; };
         check('PS5 video intro starts', (await st()).b === 'ps5');

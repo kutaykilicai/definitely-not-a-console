@@ -51,7 +51,8 @@ if (mode === 'baddata') {
 if (mode === 'empty') doc.games = doc.games.filter((x) => x.console !== 'x360');
 if (mode === 'many') for (let i = 0; i < 300; i++) doc.games.push(g(`x360-${i}`, `Xbox Oyunu ${i} İğüşçö`, { console: 'x360', args: '1' }));
 if (mode === 'flow' || mode === 'close') settings.bootIntro = 'once';
-fs.writeFileSync(gj, JSON.stringify(doc, null, 2));
+if (mode === 'single') doc.games = doc.games.find((x) => x.console === 'x360');   // one game, not a list
+fs.writeFileSync(gj, '\uFEFF' + JSON.stringify(doc, null, 2));
 fs.writeFileSync(path.join(D, 'settings.json'), mode === 'baddata' ? '[1, 2]' : JSON.stringify(settings, null, 2));
 fs.writeFileSync(path.join(D, 'state.json'), mode === 'baddata' ? 'null' : typeof state === 'string' ? state : JSON.stringify(state));
 process.stdout.write(dst);

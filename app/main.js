@@ -85,6 +85,8 @@ for (const k of ['lastPlayed', 'playSeconds', 'windowModes', 'loadStats']) if (!
 
 async function loadGames() {
   const doc = readObj(FILES.games, null) || { version: 1, games: [] };
+  // PowerShell 5's ConvertTo-Json can turn a one-game list into a bare object
+  if (doc.games && typeof doc.games === 'object' && !Array.isArray(doc.games) && (doc.games.id || doc.games.exe)) doc.games = [doc.games];
   if (!Array.isArray(doc.games)) doc.games = [];
   doc.games = doc.games.filter((g) => g && typeof g === 'object' && !Array.isArray(g));
   // hand-edited entries: a missing id or a non-text title used to stop the whole menu from loading
