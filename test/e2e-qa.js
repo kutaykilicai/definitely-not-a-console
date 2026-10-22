@@ -157,8 +157,30 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
         info.shownAfterOnce = await shown();
         check('and shows the new value again', info.shownAfterOnce === 'Her açılışta bir kez', info.shownAfterOnce);
         check('and back to once', readJson(FILES.settings, {}).bootIntro === 'once', readJson(FILES.settings, {}).bootIntro);
+        // language from the X360 menu: the dashboard follows at once, and back
+        const tabs = () => js('[...document.querySelectorAll("#x360 .x-tab")].map((e) => e.textContent).join("|")');
+        const tabsTr = await tabs();
+        const langRow = rows.findIndex((r) => /Dil \/ Language/.test(r));
+        const go = async (to) => { const cur = await js('(() => { const f = document.querySelector(".full .panel .it.focus"); return f ? +f.dataset.i : 0; })()'); for (let i = 0; i < Math.abs(to - cur); i++) { await press(to > cur ? 'down' : 'up'); await sleep(50); } };
+        await go(langRow); await press('select'); await sleep(600);
+        const tabsEn = await tabs();
+        check('language to English from the X360 menu: tabs follow', langRow >= 0 && tabsEn !== tabsTr && /home/.test(tabsEn), `${tabsTr} -> ${tabsEn}`);
+        await press('select'); await sleep(600);
+        check('and back to Turkish', (await tabs()) === tabsTr, await tabs());
         await press('back'); await sleep(400);
         s = await st(); check('settings closed, still X360', s.ov === 0 && s.c === 'x360', JSON.stringify(s));
+      }
+      if (MODE === 'flow') {
+        // focus is kept on both sides across switches
+        await focusX('settings'); await sleep(100);
+        await press('consolePrev'); await settle(); await sleep(200);
+        await press('right'); await press('right'); await sleep(200);
+        const nav1 = await js('JSON.stringify(window.__ps5.nav)');
+        await press('consoleNext'); await settle(); await sleep(200);
+        let s2 = await st();
+        check('X360 focus kept across a switch', s2.x === 'settings', s2.x);
+        await press('consoleNext'); await settle(); await sleep(200);
+        check('PS5 focus kept across a switch', (await js('JSON.stringify(window.__ps5.nav)')) === nav1, nav1);
       }
       if (MODE === 'close') {
         // Alt+F4 while the PS5 intro plays: the app quits and does not come back by itself.
