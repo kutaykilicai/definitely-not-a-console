@@ -24,7 +24,7 @@ const suspendWanted = (game) => !!game && game.suspendInMenu !== false;
 const NEVER_PAUSE = new Set(['system', 'registry', 'smss.exe', 'csrss.exe', 'wininit.exe', 'winlogon.exe', 'services.exe', 'lsass.exe',
   'svchost.exe', 'dwm.exe', 'explorer.exe', 'sihost.exe', 'fontdrvhost.exe', 'ctfmon.exe', 'audiodg.exe', 'conhost.exe', 'openconsole.exe',
   'windowsterminal.exe', 'cmd.exe', 'powershell.exe', 'pwsh.exe', 'steam.exe', 'steamwebhelper.exe', 'steamservice.exe', 'gameoverlayui.exe',
-  'losslessscaling.exe', 'electron.exe', 'definitely not ps5 menu.exe', 'ps5winhelper.exe', 'gamebar.exe', 'gamebarftserver.exe']);
+  'losslessscaling.exe', 'electron.exe', 'definitely not ps5 menu.exe', 'definitely not a console.exe', 'ps5winhelper.exe', 'dnac-padwatch.exe', 'gamebar.exe', 'gamebarftserver.exe']);
 
 // Processes to pause: the game's process tree (plus same-folder exes), minus the never-pause list
 // and the given pids (our own, Lossless Scaling's).

@@ -18,15 +18,16 @@ const argv = process.argv.slice(1);
 const flag = (n) => argv.some((a) => a === `--${n}` || a.startsWith(`--${n}=`));
 const flagVal = (n) => { const a = argv.find((x) => x.startsWith(`--${n}=`)); return a ? a.slice(n.length + 3) : null; };
 
-// Per-user data: %APPDATA%\Definitely Not PS5 Menu (games.json, settings.json, state.json, assets\).
+// Per-user data: %APPDATA%\Definitely Not a Console (games.json, settings.json, state.json, assets\).
 // PS5MENU_ROOT (tests, developers) keeps everything under one folder instead.
 const ROOT_ENV = process.env.PS5MENU_ROOT || null;
-const APP_NAME = 'Definitely Not PS5 Menu';
+const APP_NAME = 'Definitely Not a Console';
+const migrate = require('./lib/migrate');
 const DATA = ROOT_ENV ? path.join(ROOT_ENV, 'data') : path.join(app.getPath('appData'), APP_NAME);
 const USER_ASSETS = ROOT_ENV ? path.join(ROOT_ENV, 'assets', 'user') : path.join(DATA, 'assets');
 const ROOT = ROOT_ENV || DATA;
 const BUILTIN = path.join(__dirname, 'assets');
-// Console boot intros: the user's own files go here (%APPDATA%\Definitely Not PS5 Menu\intro).
+// Console boot intros: the user's own files go here (%APPDATA%\Definitely Not a Console\intro).
 const INTRO_DIR = path.join(ROOT, 'intro');
 for (const d of [DATA, INTRO_DIR, USER_ASSETS, path.join(USER_ASSETS, 'fonts'), path.join(USER_ASSETS, 'sounds'), path.join(USER_ASSETS, 'games')]) {
   try { fs.mkdirSync(d, { recursive: true }); } catch { /* read-only is fine */ }
@@ -34,7 +35,11 @@ for (const d of [DATA, INTRO_DIR, USER_ASSETS, path.join(USER_ASSETS, 'fonts'), 
 // Earlier builds were called "PS5 Menu": first %APPDATA%\PS5 Menu, before that data\ next to the
 // exe (portable zip). Bring the newest of those over once so existing libraries keep working.
 let migration = { migrated: false };
-if (!ROOT_ENV) {
+// 1.5.0 rename: %APPDATA%\Definitely Not PS5 Menu -> %APPDATA%\Definitely Not a Console (copied, the
+// old folder stays). PS5MENU_OLD_DATA points tests at an old folder of their own.
+const OLD_DATA = process.env.PS5MENU_OLD_DATA || (ROOT_ENV ? null : path.join(app.getPath('appData'), migrate.OLD_NAME));
+try { if (OLD_DATA) migration = migrate.migrateRename({ fromDir: OLD_DATA, dataDir: DATA }); } catch (e) { migration = { migrated: false, error: e.message }; }
+if (!ROOT_ENV && !migration.migrated) {
   try {
     migration = library.migrateConfigDir({ fromDir: path.join(app.getPath('appData'), 'PS5 Menu'), configDir: DATA });
     if (!migration.migrated && app.isPackaged) migration = library.migrateLegacy({ legacyRoot: path.dirname(process.execPath), configDir: DATA, assetsDir: USER_ASSETS });
@@ -977,6 +982,13 @@ app.whenReady().then(() => {
   // Bring the menu back from anywhere (keyboard). Controller PS button is handled in the renderer.
   try { globalShortcut.register('CommandOrControl+Alt+Home', () => homeShortcut()); } catch { /* */ }
   if (isWin && settings.autostart) app.setLoginItemSettings({ openAtLogin: true, path: process.execPath });
+  // After the rename: a "start with Windows" entry for the old exe now starts the new one.
+  if (migration.migrated && (isWin || process.env.PS5MENU_FAKE_REG)) {
+    try {
+      const reg = process.env.PS5MENU_FAKE_REG ? migrate.fileRun(process.env.PS5MENU_FAKE_REG) : migrate.regRun(require('child_process').execFileSync);
+      migration.runMoved = migrate.moveRunEntry({ reg, setNew: () => { if (isWin) app.setLoginItemSettings({ openAtLogin: true, path: process.execPath }); else reg.set(APP_NAME, process.execPath); settings.autostart = true; writeJson(FILES.settings, settings); } });
+    } catch (e) { migration.runError = e.message; }
+  }
 });
 app.on('before-quit', (e) => {
   if (needsQuitQuestion()) { e.preventDefault(); askQuit(); return; }

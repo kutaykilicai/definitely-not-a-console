@@ -94,7 +94,7 @@ function addProfile(xml, { title, exePath, delay = 5, template = null }) {
 }
 
 // Profiles this menu made itself ("<game> (PS5 Menu)", "<game> (Definitely Not PS5 Menu)").
-const isMenuProfile = (title) => /\((Definitely Not )?PS5 Menu\)$/.test(title || '');
+const isMenuProfile = (title) => /\(((Definitely Not )?PS5 Menu|Definitely Not a Console)\)$/.test(title || '');
 
 // Set Auto Scale delay of one profile (by title). Pure string edit; everything else stays.
 function setAutoScaleDelay(xml, title, delay) {

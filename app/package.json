@@ -1,8 +1,8 @@
 {
-  "name": "definitely-not-ps5-menu",
-  "productName": "Definitely Not PS5 Menu",
-  "version": "1.4.2",
-  "description": "Windows için PS5 ana ekranına benzeyen bir oyun başlatıcı. Resmi değildir.",
+  "name": "definitely-not-a-console",
+  "productName": "Definitely Not a Console",
+  "version": "1.5.0",
+  "description": "Windows için konsol menülerine (PS5, Xbox 360) benzeyen bir oyun başlatıcı. Resmi değildir.",
   "main": "main.js",
   "author": "Kutay Kılıç <vodkakutay@gmail.com>",
   "license": "MIT",
@@ -17,8 +17,8 @@
     "electron-builder": "^26.15.3"
   },
   "build": {
-    "appId": "io.github.kutaykilicai.definitelynotps5menu",
-    "productName": "Definitely Not PS5 Menu",
+    "appId": "io.github.kutaykilicai.definitelynotaconsole",
+    "productName": "Definitely Not a Console",
     "copyright": "Copyright (c) 2026 Kutay Kılıç",
     "directories": {
       "output": "../dist"
@@ -64,7 +64,7 @@
       ],
       "icon": "assets/icons/app.ico",
       "signAndEditExecutable": false,
-      "artifactName": "Definitely-Not-PS5-Menu-${version}-portable.${ext}"
+      "artifactName": "Definitely-Not-a-Console-${version}-portable.${ext}"
     },
     "nsis": {
       "oneClick": true,
@@ -72,10 +72,10 @@
       "allowElevation": false,
       "createDesktopShortcut": "always",
       "createStartMenuShortcut": true,
-      "shortcutName": "Definitely Not PS5 Menu",
-      "uninstallDisplayName": "Definitely Not PS5 Menu",
+      "shortcutName": "Definitely Not a Console",
+      "uninstallDisplayName": "Definitely Not a Console",
       "deleteAppDataOnUninstall": false,
-      "artifactName": "Definitely Not PS5 Menu Setup ${version}.${ext}",
+      "artifactName": "Definitely Not a Console Setup ${version}.${ext}",
       "installerIcon": "assets/icons/app.ico",
       "uninstallerIcon": "assets/icons/app.ico",
       "runAfterFinish": true

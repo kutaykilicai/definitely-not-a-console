@@ -12,7 +12,7 @@ function stackOrder() {   // bottom -> top, decimal ids (xwininfo lists top firs
   let out = ''; try { out = execFileSync('xwininfo', ['-root', '-children'], { encoding: 'utf8' }); } catch { return []; }
   return [...out.matchAll(/^\s+(0x[0-9a-f]+) "([^"]*)"/gm)].map((m) => [String(parseInt(m[1], 16)), m[2]]).reverse();
 }
-const isTop = ([, name]) => /^Definitely Not PS5 Menu|^fake-ls-output$/.test(name);
+const isTop = ([, name]) => /^Definitely Not (PS5 Menu|a Console)|^fake-ls-output$/.test(name);
 
 // Windows keeps always-on-top windows above all others; X without a window manager does not. A new
 // or raised normal window is put back below them right away (checked every 15 ms).

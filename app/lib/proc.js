@@ -77,7 +77,7 @@ class GameRunner extends EventEmitter {
     const startedAt = Date.now();
     const watchNames = new Set([...(game.watch || []).map((s) => s.toLowerCase()), ...exeNamesIn(cwd), ...exeNamesIn(P.dirname(game.exe))]);
     if (ownExe) watchNames.delete(P.basename(ownExe).toLowerCase());
-    for (const n of ['electron.exe', 'definitely not ps5 menu.exe', 'ps5 menu.exe', 'ps5-menu.exe', 'crashpad_handler.exe', 'unins000.exe']) watchNames.delete(n);
+    for (const n of ['electron.exe', 'definitely not ps5 menu.exe', 'definitely not a console.exe', 'dnac-padwatch.exe', 'ps5 menu.exe', 'ps5-menu.exe', 'crashpad_handler.exe', 'unins000.exe']) watchNames.delete(n);
     const cur = { game, child, startedAt, pid: child.pid, watchNames: [...watchNames] };
     this.current = cur;
     child.once('error', (e) => { this.emit('error', game, e); this._finish(cur, true); });
