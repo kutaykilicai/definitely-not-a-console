@@ -1,0 +1,21 @@
+// Unit tests for the Switch HOME navigation (app/renderer/switch/nswnav.js).
+const assert = require('assert');
+const N = require('../app/renderer/switch/nswnav.js');
+let n = 0; const t = (name, f) => { f(); n++; };
+const ctx = (games, users = 1) => ({ users, games, icons: 9, visible: 4 });
+const run = (st, keys, c) => { let fx = []; for (const k of keys) { const r = N.reduce(st, k, c); st = r.state; fx = r.fx; } return { st, fx }; };
+t('initial focus on the software row', () => assert.strictEqual(N.initial(ctx(5)).row, 'games'));
+t('no games: initial focus on the buttons', () => assert.strictEqual(N.initial(ctx(0)).row, 'icons'));
+t('left at 0 bumps', () => { const r = N.reduce(N.initial(ctx(5)), 'left', ctx(5)); assert.strictEqual(r.state.i.games, 0); assert.strictEqual(r.fx[0].type, 'bump'); });
+t('right at the end bumps', () => { const { st, fx } = run(N.initial(ctx(3)), ['right', 'right', 'right'], ctx(3)); assert.strictEqual(st.i.games, 2); assert.strictEqual(fx[0].type, 'bump'); });
+t('scroll starts after the 4th tile', () => { const c = ctx(10); let { st } = run(N.initial(c), ['right', 'right', 'right'], c); assert.strictEqual(st.scroll, 0); ({ st } = run(st, ['right'], c)); assert.strictEqual(st.scroll, 1); });
+t('scroll back when going left', () => { const c = ctx(10); const { st } = run(N.initial(c), [...Array(9).fill('right'), ...Array(9).fill('left')], c); assert.strictEqual(st.scroll, 0); assert.strictEqual(st.i.games, 0); });
+t('scroll never leaves empty room', () => { const c = ctx(6); const { st } = run(N.initial(c), Array(10).fill('right'), c); assert.strictEqual(st.scroll, 2); });
+t('down to buttons, up twice to user', () => { const c = ctx(5); let { st } = run(N.initial(c), ['down'], c); assert.strictEqual(st.row, 'icons'); ({ st } = run(st, ['up', 'up'], c)); assert.strictEqual(st.row, 'user'); });
+t('up skips an empty software row', () => { const c = ctx(0); const { st } = run(N.initial(c), ['up'], c); assert.strictEqual(st.row, 'user'); });
+t('down at the bottom bumps', () => { const c = ctx(5); const { st, fx } = run(N.initial(c), ['down', 'down'], c); assert.strictEqual(st.row, 'icons'); assert.strictEqual(fx[0].type, 'bump'); });
+t('each row keeps its own index', () => { const c = ctx(5); const { st } = run(N.initial(c), ['right', 'right', 'down', 'right', 'up'], c); assert.strictEqual(st.i.games, 2); assert.strictEqual(st.i.icons, 1); assert.strictEqual(st.row, 'games'); });
+t('select activates the focused item', () => { const c = ctx(5); const { fx } = run(N.initial(c), ['right', 'select'], c); assert.deepStrictEqual(fx[0], { type: 'activate', row: 'games', index: 1 }); });
+t('options on a tile opens its menu, not on buttons', () => { const c = ctx(5); assert.strictEqual(run(N.initial(c), ['options'], c).fx[0].type, 'menu'); assert.strictEqual(run(N.initial(c), ['down', 'options'], c).fx.length, 0); });
+t('clamp after removing games', () => { let st = run(N.initial(ctx(8)), Array(7).fill('right'), ctx(8)).st; st = N.clamp(st, ctx(3)); assert.strictEqual(st.i.games, 2); assert.strictEqual(st.scroll, 0); st = N.clamp(st, ctx(0)); assert.strictEqual(st.row, 'icons'); });
+console.log(`${n} tests passed`);

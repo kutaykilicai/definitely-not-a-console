@@ -61,7 +61,7 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
       check('up/down at the X360 grid edges do not switch', s.c === 'x360' && s.n === n0, JSON.stringify(s));
       await press('back'); await sleep(300); if ((await state()).x !== 'naruto-rise-of-a-ninja') { await press('back'); await sleep(300); }
 
-      // L3 / PageUp: previous menu (with two menus: the other one), the new menu comes from above
+      // L3 / PageUp: previous menu in the cycle PS5 -> X360 -> Switch, the new menu comes from above
       await press('consolePrev'); await sleep(120);
       const ty2 = await js(`(() => { const m = getComputedStyle(document.querySelector('#x360')).transform; return m === 'none' ? 0 : Number(m.replace(/[^0-9.,eE-]/g, '').split(',')[5]); })()`);
       check('prev: the outgoing X360 menu moves down (new one from above)', ty2 > 0, ty2);
@@ -69,16 +69,16 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
       check('L3 goes back to PS5', s.c === 'ps5' && v.p && !v.x, JSON.stringify(s));
       check('PS5 row focus kept after the round trip', s.zone === 'row', s.zone);
       await sleep(250); await press('consolePrev'); await settle(); s = await state();
-      check('L3 on PS5 also goes to X360 (two menus)', s.c === 'x360', s.c);
+      check('L3 on PS5 wraps to Switch (three menus: PS5, X360, Switch)', s.c === 'switch', s.c);
       await sleep(250); await press('consoleNext'); await settle(); s = await state();
-      check('R3 on X360 goes to PS5', s.c === 'ps5', s.c);
+      check('R3 on Switch wraps to PS5', s.c === 'ps5', s.c);
 
       // Spam: 8 presses 40 ms apart -> exactly one switch
       await sleep(300); n0 = (await state()).n;
       for (let i = 0; i < 8; i++) { await press(i % 2 ? 'consolePrev' : 'consoleNext'); await sleep(40); }
       await settle(); s = await state();
       check('L3/R3 spam: one switch only', s.n - n0 === 1 && s.c === 'x360', `switches ${s.n - n0}, console ${s.c}`);
-      await sleep(300); await press('consoleNext'); await settle();
+      await sleep(300); await press('consolePrev'); await settle();
 
       // Real keyboard: PageDown switches, a held PageDown (key repeat) does not switch again
       await sleep(300); n0 = (await state()).n;
@@ -88,11 +88,13 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
       await settle(); await sleep(300); s = await state();
       check('held PageDown: a single switch', s.n - n0 === 1 && s.c === 'x360', `switches ${s.n - n0}, console ${s.c}`);
       win.webContents.sendInputEvent({ type: 'keyDown', keyCode: 'PageUp' }); win.webContents.sendInputEvent({ type: 'keyUp', keyCode: 'PageUp' });
-      await settle(); await sleep(300); s = await state();
+      await waitFor(async () => (await state()).c === 'ps5', 1500, 20); await settle(); await sleep(300); s = await state();
       check('PageUp switches back', s.c === 'ps5', s.c);
 
       // Not while an overlay is open
+      const preOv = JSON.stringify(await state());
       await press('options'); await waitFor(async () => (await js('window.__ps5.overlays')) > 0, 2000);
+      log('before options', preOv, await js('JSON.stringify({z: window.__ps5.nav.zone, r: window.__ps5.nav.row, intro: document.getElementById("intro").classList.contains("on"), boot: window.__ps5.boot})'));
       const ov = await js('window.__ps5.overlays');
       n0 = (await state()).n; await press('consoleNext'); await sleep(300); s = await state();
       check('no switch while an overlay is open', ov > 0 && s.n === n0 && s.c === 'ps5', `overlays ${ov}, switches ${s.n - n0} ${JSON.stringify(s)} ${await js('JSON.stringify(window.__ps5.items.map((x) => x.kind))')}`);
@@ -154,7 +156,7 @@ module.exports = ({ app, win, runner, FILES, readJson }) => {
       check('dummy game saw the launch', /dummy/i.test(dummy) || dummy.length > 0, dummy);
 
       // Switch back and launch a PS5 game: PS5 behaviour unchanged
-      await press('consoleNext'); await settle(); s = await state();
+      await press('consolePrev'); await settle(); s = await state();
       check('back to PS5 for a PS5 launch', s.c === 'ps5', s.c);
       exited = null; runner.once('exited', (g, info) => { exited = { id: g.id, ...info }; });
       const want = await js('window.__ps5.items[window.__ps5.nav.row].id');

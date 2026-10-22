@@ -78,6 +78,30 @@ module.exports = ({ win, runner }) => {
       }
       check('X360 intro gone, dashboard shown', await waitFor(async () => !(await st()).b && !(await st()).sw, 3000), JSON.stringify(await st()));
 
+      // 1.5: the third menu. First R3 from the Xbox 360 dashboard: the Switch intro, once.
+      await sleep(300);
+      await press('consoleNext');
+      check('next from X360: Switch boot intro starts', await waitFor(async () => (await st()).b === 'switch', 1500), JSON.stringify(await st()));
+      check('menu switched to Switch under the intro', await waitFor(async () => (await st()).c === 'switch', 3500), JSON.stringify(await st()));
+      if (MODE === 'video') {
+        s = await st();
+        check('Switch: the user video plays from the trim start', s.v && s.v.w > 0 && !s.v.paused && s.v.t >= 1.1, JSON.stringify(s.v));
+        await waitFor(async () => { const x = await st(); return x.v && x.v.t > 6.6; }, 9000, 60);
+        const tr = await lumaTrace(1100); info.switchFade = tr;
+        const min = Math.min(...tr.map((x) => x[1]));
+        check('Switch video fades into the HOME Menu without a dark frame', min > 180, `min luma ${min}`);
+      } else {
+        const t0 = Date.now();
+        await waitFor(async () => !(await st()).b, 9000, 100);
+        info.switchSeconds = (Date.now() - t0) / 1000;
+        check('drawn Switch intro ends by itself (~4.3 s + fade)', info.switchSeconds > 3.4 && info.switchSeconds < 6.5, info.switchSeconds);
+      }
+      check('Switch intro gone, HOME Menu shown', await waitFor(async () => !(await st()).b && !(await st()).sw, 3000), JSON.stringify(await st()));
+      await sleep(300);
+      await press('consolePrev'); await sleep(60); s = await st();
+      check('back to X360 (L3): no intro, normal slide', !s.b && s.sw && s.c === 'x360', JSON.stringify(s));
+      await waitFor(async () => !(await st()).sw, 2000);
+
       // Later switches: no intro, the normal slide.
       await sleep(300);
       await press('consolePrev'); await sleep(60); s = await st();
@@ -95,7 +119,7 @@ module.exports = ({ win, runner }) => {
       await sleep(800); s = await st();
       check('after a game: menu back without a boot intro', back && !s.b, JSON.stringify(s));
       info.shownEnd = (await js('window.ps5.init()')).boot.shown;
-      check('both intros recorded as shown for this run', info.shownEnd.ps5 && info.shownEnd.x360, JSON.stringify(info.shownEnd));
+      check('all three intros recorded as shown for this run', info.shownEnd.ps5 && info.shownEnd.x360 && info.shownEnd.switch, JSON.stringify(info.shownEnd));
     } catch (e) { check('no exception', false, e.stack); }
     log('done', results.filter((r) => r[1]).length + '/' + results.length);
     setTimeout(() => process.exit(0), 300);

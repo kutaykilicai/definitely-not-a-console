@@ -12,7 +12,7 @@ fs.writeFileSync(path.join(dst, 'data', 'state.json'), JSON.stringify({ console:
 const intro = path.join(dst, 'intro'); fs.mkdirSync(intro, { recursive: true });
 // video: the user's videos + logos; logo: only the logos (drawn intros with the user's marks).
 const from = process.env.BOOT_FILES || '/workspace/ps5-menu-intro-user';
-const files = { video: ['ps5-boot.mp4', 'x360-boot.mp4', 'ps5-logo.png', 'x360-logo.png'], logo: ['ps5-logo.png', 'x360-logo.png'] }[mode] || [];
+const files = { video: ['ps5-boot.mp4', 'x360-boot.mp4', 'switch-boot.mp4', 'ps5-logo.png', 'x360-logo.png', 'switch-logo.png'], logo: ['ps5-logo.png', 'x360-logo.png', 'switch-logo.png'] }[mode] || [];
 for (const f of files) if (fs.existsSync(path.join(from, f))) fs.copyFileSync(path.join(from, f), path.join(intro, f));
 if (mode === 'video') fs.copyFileSync(path.join(__dirname, '..', 'install', 'intro.json'), path.join(intro, 'intro.json'));
 console.log(dst);
