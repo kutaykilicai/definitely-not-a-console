@@ -33,22 +33,26 @@ Resmi bir ürün değil, hayran işi bir projedir. Sony ile hiçbir bağı yoktu
 - Konsoldaki gibi oyun sırasında menüye dönüş: Esc'ye ya da Xbox düğmesine basılı tut, oyun duraklar, menüden **Devam Et** ile kaldığın yerden sürer. Başka bir oyun seçersen açık olan önce kapatılır.
 - İstersen oyun Lossless Scaling ile birlikte açılır ve ölçekleme kendiliğinden başlar.
 - Açılırken uzun süre shader hazırlayan oyunlarda (Shadow of the Colossus PC portu, shadPS4 ile inFAMOUS) yükleme ekranında ilerleme yüzdesi görünür.
-- İkinci menü olarak 2010-2013 dönemi Xbox 360 panosu; yukarı/aşağı ile geçilir.
+- Üç menü: PS5 ana ekranı, 2010-2013 dönemi Xbox 360 panosu ve Nintendo Switch HOME menüsü. L3/R3 ya da PageUp/PageDown ile geçilir.
+- Xbox düğmesine tek basış menüyü açar ya da öne getirir, oyun kapanmaz; Share düğmesi masaüstünü gösterir.
 - Her menünün ilk açılışında konsol açılışına benzeyen bir intro; istersen kendi videonla, sesinle ya da logonla.
 - Seçili oyunun kendi müziği ve resmi, konsoldaki gibi: PS4 dökümlerinde `sce_sys\snd0.at9` (bilgisayarındaki ffmpeg ile bir kez Ogg'a çevrilir) ve `pic1.png`, diğer oyunlarda oyun klasöründeki ya da senin seçtiğin dosyalar.
 - Kumanda bağlanınca menü kendiliğinden açılır (isteğe bağlı, Ayarlar'dan kapatılır).
 - Oynama istatistikleri: oyun başına toplam süre, son oynama, en uzun oturum, son 7 günün grafiği; açılışta "Devam et" kartı, oyundan çıkınca oturum özeti.
 - Kablosuz kumandanın pil durumu köşede, azalınca bir kez uyarı.
 - PC portları için güncelleme takibi (GitHub sürümleri): tam yedek, tek tuşla güncelle ve geri al, sorunlu görünen sürümleri bekletme.
-- Tek tıkla kurulum, yönetici izni istemez.
+- Tek tıkla kurulum, yönetici izni istemez. Telifli hiçbir şey paketle gelmez: oyunlarını, introlarını ve müziklerini sen eklersin.
 
 ## Kurulum
 
-[Releases](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases/latest) sayfasından `Definitely.Not.a.Console.Setup.1.5.0.exe` dosyasını indirip çalıştır. Kurulum birkaç saniye sürer, yönetici izni istemez, masaüstüne ve Başlat menüsüne kısayol koyar ve bitince menüyü açar.
+1. [Releases](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases/latest) sayfasından `Definitely-Not-a-Console-Setup-1.5.1.exe` dosyasını indir.
+2. Dosyayı çalıştır. Kurulum birkaç saniye sürer, yönetici izni istemez, masaüstüne ve Başlat menüsüne kısayol koyar ve bitince menüyü açar.
+3. Windows "Windows bilgisayarınızı korudu" uyarısı gösterirse **Diğer bilgiler** yazısına, ardından **Yine de çalıştır** düğmesine bas. Uygulama imzalı olmadığı için bu uyarı ilk açılışta çıkabilir; yalnızca bir kez yapman gerekir.
+4. Menü ilk açıldığında oyun listesi boştur. Oyunlarını kendin eklersin, aşağıdaki [Oyun ekleme](#oyun-ekleme) bölümünde anlatılıyor.
 
-Uygulama imzalı olmadığı için Windows ilk açılışta "Windows bilgisayarınızı korudu" uyarısı gösterebilir. O pencerede **Diğer bilgiler** yazısına, ardından **Yine de çalıştır** düğmesine bas. Bunu yalnızca bir kez yapman gerekir.
+Kurmadan denemek istersen aynı sayfadaki `Definitely-Not-a-Console-1.5.1-portable.zip` dosyasını bir klasöre çıkarıp içindeki `Definitely Not a Console.exe` dosyasını açabilirsin.
 
-Kurmadan denemek istersen aynı sayfadaki `Definitely-Not-a-Console-1.5.0-portable.zip` dosyasını bir klasöre çıkarıp içindeki `Definitely Not a Console.exe` dosyasını açabilirsin.
+**Pakette olmayanlar.** Konsol açılış videoları, oyun müzikleri, oyun kapakları ve logoları, Switch anahtarları (`prod.keys`, `title.keys`) ve Switch yazılımı (firmware) pakete konmaz; bunlar telifli olduğu için bu depoda da yoktur. Intro videosu yoksa menü kendi çizdiği ve sentezlediği introyu oynar. İstersen kendi videolarını `%APPDATA%\Definitely Not a Console\intro` klasörüne koyabilirsin ([Açılış introları](#açılış-introları)). Switch oyunları için kendi Eden emülatörün ve kendi anahtarların gerekir; menü yalnızca onları başlatır.
 
 <table>
 <tr>
@@ -88,6 +92,8 @@ Sonradan değiştirmek istediğinde oyunun seçeneklerinden **Oyunu Düzenle**'y
 | Oyun seçenekleri | Menü (≡) | O |
 | Oyunlar / Medya sekmesi | LB, RB | Q, E |
 | Ana ekrana dön | Xbox düğmesi ya da Görünüm + Menü | H |
+| Menüyü açık oyunun önüne getir | Xbox düğmesine bir kez bas (oyun çalışmaya devam eder) | |
+| Masaüstünü göster | Paylaş (Share) düğmesi (oyun arkada çalışmaya devam eder) | |
 | Menüler arasında geç (PS5 → Xbox 360 → Switch) | Sol çubuğa bas (L3, önceki) ya da sağ çubuğa bas (R3, sonraki) | PageUp, PageDown |
 | Oyun açıkken menüye dön | Xbox düğmesine ya da Görünüm + Menü'ye 1 sn basılı tut | Esc'ye 1 sn basılı tut ya da Ctrl+Alt+Home |
 | Menüden çık | | Alt+F4 |
@@ -146,6 +152,8 @@ Ayarlar'daki **Kumanda bağlanınca menüyü aç** açıksa (varsayılan) Window
 Steam açıkken Steam'in "Xbox düğmesine basınca Big Picture'ı aç" seçeneği de açıksa ikisi aynı anda tepki verebilir. Menüyü kullanacaksan Steam > Ayarlar > Kumanda > "Steam düğmesi Big Picture'ı açar" seçeneğini kapat.
 
 Bilgisayarı uykudan kumandayla uyandırmak Windows'ta kablolu ya da Xbox Kablosuz Adaptörüyle bağlı kumandalarda, BIOS ve aygıt ayarları izin veriyorsa çalışır; Bluetooth kumandalar genellikle uyandıramaz.
+
+**Xbox düğmesi ve Share.** Kumanda yardımcısı Xbox düğmesine tek basışı da okur. Menü kapalıysa açılır; açıksa öne gelir. Bir oyun çalışırken de aynı şey olur ve oyun kapanmadan arkada çalışmaya devam eder. Share düğmesine basınca menü ve açık oyun görev çubuğuna iner, masaüstü görünür; oyun çalışmaya devam eder, geri dönmek için Xbox düğmesine basarsın. İkisi Ayarlar'daki **Xbox düğmesine bas: menüyü aç, oyunun üstüne getir** ve **Paylaş düğmesi: masaüstüne geç** satırlarından kapatılabilir. Menüyü kapattıktan sonra kumanda yeniden bağlanırsa menü 10 saniye boyunca kendiliğinden açılmaz. Share düğmesi her kumandada denenmedi; çalışmazsa Xbox düğmesi yine de çalışır.
 
 **Konsol modu** (varsayılan kapalı): Windows ile başlar, "devam etmek için A'ya bas" ekranı olmadan doğrudan menüye girer ve kumanda bağlanınca açılır. Kapatınca değiştirdiği ayarlar eski hâline döner. Windows kabuğunu (Explorer) değiştirmez.
 
@@ -239,6 +247,6 @@ Bu proje resmi değildir; Sony Interactive Entertainment ya da Microsoft ile ba�
 
 A game launcher for Windows that looks like the PS5 home screen. You add games, emulators or shortcuts from inside the app (the **+** tile, or Settings > Oyunları Yönet), pick a cover image or point it at a PS4 dump's `sce_sys` folder, and launch everything with a keyboard or an Xbox controller. While a game runs the menu window is closed completely and comes back when the game exits. Hold Esc or the Xbox button for about a second during a game to pause it and open the menu, then pick Devam Et to continue where you left off; starting another game closes the open one first, like on a console. If Lossless Scaling is installed through Steam, any game can start with it and scale automatically. Games that prepare shaders for a long time before their first picture (such as the Shadow of the Colossus PC port) show their progress on the launch screen. A second menu styled after the 2010-2013 Xbox 360 dashboard is one stick click away (L3 / R3 on the pad, PageUp / PageDown on the keyboard); up/down navigate inside each menu as before. Each menu plays a short boot intro the first time it comes up in a session (Settings > Konsol Açılış İntrosu: once / off); put your own `ps5-boot.mp4` / `x360-boot.mp4`, `*-boot.wav/.mp3/.ogg` or `ps5-logo.png` / `x360-logo.png` into `%APPDATA%\Definitely Not a Console\intro\` to replace the video, the sound or the logo, and trim a video with `intro.json` (`{"x360": {"start": 0.1, "end": 7.6}}`). Since 1.5.0 the focused game plays its own music (PS4 dumps: `sce_sys\snd0.at9`, converted once with your own ffmpeg; other games: a file you pick or one in the game folder) and its picture becomes the background; a small helper opens the menu when a controller connects (Settings > Kumanda bağlanınca menüyü aç; mind Steam's Big Picture button setting); there are play statistics, a wireless controller battery indicator and an updater for PC ports from GitHub releases (full backup, one-step roll back, new releases wait 3 days and are held when crash reports come in; notify only by default).
 
-Download `Definitely.Not.a.Console.Setup.1.5.0.exe` from the [Releases](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases/latest) page and run it. It installs per user, needs no admin rights and adds Start Menu and desktop shortcuts. The app is not code signed, so SmartScreen may warn you the first time: click **More info**, then **Run anyway**. A portable zip is available as well. To uninstall, use Windows Settings > Apps. The interface is in Turkish by default; switch it under Ayarlar > Dil / Language.
+Download `Definitely-Not-a-Console-Setup-1.5.1.exe` from the [Releases](https://github.com/kutaykilicai/definitely-not-ps5-menu/releases/latest) page and run it. It installs per user, needs no admin rights and adds Start Menu and desktop shortcuts. The app is not code signed, so SmartScreen may warn you the first time: click **More info**, then **Run anyway**. A portable zip is available as well. To uninstall, use Windows Settings > Apps. The interface is in Turkish by default; switch it under Ayarlar > Dil / Language.
 
 This is an unofficial fan project and is not affiliated with, endorsed or sponsored by Sony Interactive Entertainment or Microsoft. PlayStation and PS5 are trademarks of Sony Interactive Entertainment Inc.; Xbox and Xbox 360 are trademarks of Microsoft Corporation. No Sony or Microsoft code, fonts, sounds, videos, logos or artwork are included (the boot intros are drawn and synthesized by the app; files you put in the intro folder stay yours); game covers in the screenshots belong to their owners and are not part of the repository or the installer. MIT License, Copyright (c) 2026 Kutay Kılıç.
