@@ -7,7 +7,7 @@
   "author": "Kutay Kılıç <vodkakutay@gmail.com>",
   "license": "MIT",
   "private": true,
-  "homepage": "https://github.com/kutaykilicai/definitely-not-ps5-menu",
+  "homepage": "https://github.com/kutaykilicai/definitely-not-a-console",
   "scripts": {
     "start": "electron .",
     "dist": "node ../tools/build.js"
@@ -84,6 +84,6 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/kutaykilicai/definitely-not-ps5-menu.git"
+    "url": "https://github.com/kutaykilicai/definitely-not-a-console.git"
   }
 }
